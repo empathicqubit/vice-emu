@@ -33,10 +33,13 @@
 
 #include "types.h"
 #include "uiapi.h"
+#include "mon_breakpoint.h"
 
 extern int monitor_binary_resources_init(void);
 extern void monitor_binary_resources_shutdown(void);
 extern int monitor_binary_cmdline_options_init(void);
+
+extern void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_checkpoint_t *checkpt, bool hit);
 
 extern void monitor_check_binary(void);
 

@@ -452,7 +452,7 @@ static void monitor_binary_response(uint32_t length, uint8_t response_type, uint
     }
 }
 
-static void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_checkpoint_t *checkpt) {
+void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_checkpoint_t *checkpt, bool hit) {
     unsigned char response[21];
     MEMORY_OP op = (MEMORY_OP)(
         (checkpt->check_store ? e_store : 0) 
@@ -461,18 +461,15 @@ static void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_che
     );
 
     uint32_to_little_endian(checkpt->checknum, &response[0]);
-    response[4] = mon_breakpoint_check_checkpoint(
-        e_comp_space, 
-        checkpt->start_addr, 
-        ((uint16_t)((monitor_cpu_for_memspace[e_comp_space]->mon_register_get_val)(e_comp_space, e_PC))),
-        op
-    );
-    uint16_to_little_endian((uint16_t)checkpt->start_addr, &response[5]);
-    uint16_to_little_endian((uint16_t)checkpt->end_addr, &response[7]);
+    response[4] = hit;
+
+    uint16_to_little_endian((uint16_t)addr_location(checkpt->start_addr), &response[5]);
+    uint16_to_little_endian((uint16_t)addr_location(checkpt->end_addr), &response[7]);
     response[9] = checkpt->stop;
     response[10] = checkpt->enabled;
     response[11] = op;
     response[12] = checkpt->temporary;
+
     uint32_to_little_endian((uint32_t)checkpt->hit_count, &response[13]);
     uint32_to_little_endian((uint32_t)checkpt->ignore_count, &response[17]);
     response[21] = !!checkpt->condition;
@@ -515,7 +512,7 @@ static void monitor_binary_process_checkpoint_set(binary_command_t *command) {
 
     checkpt = mon_breakpoint_find_checkpoint(brknum);
 
-    monitor_binary_response_checkpoint_info(command->request_id, checkpt);
+    monitor_binary_response_checkpoint_info(command->request_id, checkpt, 0);
 }
 
 static void monitor_binary_process_command(unsigned char * pbuffer, int buffer_size, int * pbuffer_pos) {

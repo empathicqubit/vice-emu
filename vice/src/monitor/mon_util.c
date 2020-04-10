@@ -265,14 +265,14 @@ char *uimon_in(const char *prompt)
             return NULL;
         }
     }
-
+    
     while (!p && !pchCommandLine) {
         /* as long as we don't have any return value... */
 
 #ifdef HAVE_NETWORK
         if (monitor_is_remote() || monitor_is_binary()) {
             if (monitor_is_binary()) {
-                if(!monitor_binary_get_command_line()) {
+                if (!monitor_binary_get_command_line()) {
                     mon_set_command(NULL, "x", NULL);
                     return NULL;
                 }

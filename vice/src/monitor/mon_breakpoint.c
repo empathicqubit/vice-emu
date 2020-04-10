@@ -43,7 +43,9 @@
 #include "uimon.h"
 #include "mon_breakpoint.h"
 
-
+#ifdef HAVE_NETWORK
+#include "monitor_binary.h"
+#endif
 
 struct checkpoint_list_s {
     mon_checkpoint_t *checkpt;
@@ -398,6 +400,12 @@ static int compare_checkpoints(mon_checkpoint_t *bp1, mon_checkpoint_t *bp2)
     return 0;
 }
 
+static void mon_breakpoint_event(mon_checkpoint_t *checkpt) {
+    #ifdef HAVE_NETWORK
+        monitor_binary_response_checkpoint_info(0xffffffff, checkpt, 1);
+    #endif
+}
+
 bool mon_breakpoint_check_checkpoint(MEMSPACE mem, unsigned int addr, unsigned int lastpc, MEMORY_OP op)
 {
     checkpoint_list_t *ptr;
@@ -455,6 +463,8 @@ bool mon_breakpoint_check_checkpoint(MEMSPACE mem, unsigned int addr, unsigned i
             }
 
             cp->hit_count++;
+
+            mon_breakpoint_event(cp);
 
             if (cp->stop) {
                 must_stop = TRUE;
