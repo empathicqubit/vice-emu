@@ -44,6 +44,8 @@
 #include "util.h"
 #include "vicesocket.h"
 
+#include "mon_breakpoint.h"
+
 #ifdef HAVE_NETWORK
 
 #define ADDR_LIMIT(x) ((uint16_t)(addr_mask(x)))
@@ -56,6 +58,31 @@ static int monitor_binary_enabled = 0;
 
 static int monitor_binary_input = 0;
 
+enum t_binary_command {
+    e_MON_CMD_CHECKPOINT_SET = 0x03,
+
+    e_MON_CMD_PING = 0x80,
+    e_MON_CMD_MEMDUMP = 0x01
+};
+typedef enum t_binary_command BINARY_COMMAND;
+
+enum t_binary_response {
+    e_MON_RESPONSE_MEMDUMP = 0x01,
+    e_MON_RESPONSE_CHECKPOINT_INFO = 0x02,
+
+    e_MON_RESPONSE_PING = 0x80,
+    e_MON_RESPONSE_JAM = 0x81,
+};
+typedef enum t_binary_response BINARY_RESPONSE;
+
+struct binary_command_s {
+    uint8_t api_version;
+    uint8_t command_length;
+    uint32_t request_id;
+    BINARY_COMMAND command_type;
+    unsigned char *command_body;
+};
+typedef struct binary_command_s binary_command_t;
 
 int monitor_binary_transmit(const char * buffer, size_t buffer_length)
 {
@@ -120,7 +147,6 @@ static int monitor_binary_data_available(void)
 
 void monitor_check_binary(void)
 {
-    // FIXME: Check is too naive
     if (monitor_binary_data_available()) {
         monitor_startup_trap();
     }
@@ -147,13 +173,13 @@ COMMAND STRUCTURE
 byte 0: 0x02 (STX)
 byte 1: API version ID (currently 0x01)
 byte 2: length
-Note that the command length byte (the one after STX) does *not* count the
-STX, the command length, the command byte, or the request ID. Basically
-nothing in the header, just the body.
+    Note that the command length byte (the one after STX) does *not* count the
+    STX, the command length, the command byte, or the request ID. Basically
+    nothing in the header, just the body.
 byte 3-6: request id
-In little endian order. All multibyte values are in little endian order,
-unless otherwise specified. There is no requirement for this to be unique,
-but it makes it easier to match up the responses if you do.
+    In little endian order. All multibyte values are in little endian order,
+    unless otherwise specified. There is no requirement for this to be unique,
+    but it makes it easier to match up the responses if you do.
 byte 7: The numeric command type. See the COMMANDS section for more details.
 byte 8+: The command body. See the COMMANDS section.
 
@@ -192,12 +218,12 @@ Command body:
 byte 0-1: start address
 byte 2-3: end address
 byte 4: memspace
-Describes which part of the computer you want to read:
-0x00: the computer (C64)
-0x01: drive 8
-0x02: drive 9
-0x03: drive 10
-0x04: drive 11
+    Describes which part of the computer you want to read:
+    0x00: the computer (C64)
+    0x01: drive 8
+    0x02: drive 9
+    0x03: drive 10
+    0x04: drive 11
 
 Response type:
 
@@ -221,18 +247,18 @@ Command body:
 byte 0-1: start address
 byte 2-3: end address
 byte 4: stop when hit
-0x01: true
-0x00: false
+    0x01: true
+    0x00: false
 byte 5: enabled
-0x01: true
-0x00: false
+    0x01: true
+    0x00: false
 byte 6: CPU operation
-0x01: load
-0x02: store
-0x04: exec
+    0x01: load
+    0x02: store
+    0x04: exec
 byte 7: temporary
-Deletes the checkpoint after it has been hit once. This is similar to
-"until" command, but it will not resume the emulator.
+    Deletes the checkpoint after it has been hit once. This is similar to
+    "until" command, but it will not resume the emulator.
 
 Response type:
 
@@ -253,7 +279,7 @@ Command body:
 byte 0-3: checkpoint number
 byte 4: condition expression length
 byte 5+: condition expression string
-This is the same format used on the command line. Not null terminated.
+    This is the same format used on the command line. Not null terminated.
 
 Response type:
 
@@ -292,8 +318,8 @@ Command body:
 byte 0: The count of the array items
 byte 1: The size of each entry
 byte 2+: An array with items of structure:
-byte 0: ID of the register
-byte 1-2: register value
+    byte 0: ID of the register
+    byte 1-2: register value
 
 -------------------
 0x80: MON_CMD_PING
@@ -325,9 +351,9 @@ Response body:
 byte 0: The count of the array items
 byte 1: The size of each entry
 byte 2+: An array with items of structure:
-byte 0: ID of the register
-byte 1: register size in bits
-byte 2-3: register value
+    byte 0: ID of the register
+    byte 1: register size in bits
+    byte 2-3: register value
 
 CHECKPOINT RESPONSE
 =====================
@@ -338,32 +364,32 @@ Response type:
 
 Response body:
 
-byte 0: Checkpoint number
-byte 1: Currently hit?
-0x01: true
-0x00: false
+byte 0-3: Checkpoint number
+byte 4: Currently hit?
+    0x01: true
+    0x00: false
 
-byte 2-3: start address
-byte 4-5: end address
-byte 6: stop when hit
-0x01: true
-0x00: false
-byte 7: enabled
-0x01: true
-0x00: false
-byte 8: CPU operation
-0x01: load
-0x02: store
-0x04: exec
-byte 9: temporary
-Deletes the checkpoint after it has been hit once. This is similar to
-"until" command, but it will not resume the emulator.
+byte 5-6: start address
+byte 7-8: end address
+byte 9: stop when hit
+    0x01: true
+    0x00: false
+byte 10: enabled
+    0x01: true
+    0x00: false
+byte 11: CPU operation
+    0x01: load
+    0x02: store
+    0x04: exec
+byte 12: temporary
+    Deletes the checkpoint after it has been hit once. This is similar to
+    "until" command, but it will not resume the emulator.
 
-byte 10-13: hit count
-byte 14-17: ignore count
-byte 18: Has condition?
-0x01: true
-0x00: false
+byte 13-16: hit count
+byte 17-20: ignore count
+byte 21: Has condition?
+    0x01: true
+    0x00: false
 
 JAM RESPONSE
 ===============
@@ -399,22 +425,59 @@ static uint32_t little_endian_to_uint32(unsigned char *input) {
     return (input[3] << 24) + (input[2] << 16) + (input[1] << 8) + input[0];
 }
 
+static uint16_t little_endian_to_uint16(unsigned char *input) {
+    return (input[1] << 8) + input[0];
+}
+
+static void uint16_to_little_endian(uint16_t input, unsigned char *output) {
+    output[0] = input & 0xFFu;
+    output[1] = (input >> 8) & 0xFFu;
+}
+
 static void monitor_binary_response(uint32_t length, uint8_t response_type, uint8_t errorcode, uint32_t request_id, unsigned char * body)
 {
-    unsigned char binlength[12];
+    unsigned char response[12];
 
-    binlength[0] = ASC_STX;
-    binlength[1] = MON_BINARY_API_VERSION;
-    uint32_to_little_endian(length, &binlength[2]);
-    binlength[6] = response_type;
-    binlength[7] = errorcode;
-    uint32_to_little_endian(request_id, &binlength[8]);
+    response[0] = ASC_STX;
+    response[1] = MON_BINARY_API_VERSION;
+    uint32_to_little_endian(length, &response[2]);
+    response[6] = response_type;
+    response[7] = errorcode;
+    uint32_to_little_endian(request_id, &response[8]);
 
-    monitor_binary_transmit((char*)binlength, sizeof binlength);
+    monitor_binary_transmit((char*)response, sizeof response);
 
     if (body != NULL) {
         monitor_binary_transmit((char*)body, length);
     }
+}
+
+static void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_checkpoint_t *checkpt) {
+    unsigned char response[21];
+    MEMORY_OP op = (MEMORY_OP)(
+        (checkpt->check_store ? e_store : 0) 
+        | (checkpt->check_load ? e_load : 0) 
+        | (checkpt->check_exec ? e_exec : 0)
+    );
+
+    uint32_to_little_endian(checkpt->checknum, &response[0]);
+    response[4] = mon_breakpoint_check_checkpoint(
+        e_comp_space, 
+        checkpt->start_addr, 
+        ((uint16_t)((monitor_cpu_for_memspace[e_comp_space]->mon_register_get_val)(e_comp_space, e_PC))),
+        op
+    );
+    uint16_to_little_endian((uint16_t)checkpt->start_addr, &response[5]);
+    uint16_to_little_endian((uint16_t)checkpt->end_addr, &response[7]);
+    response[9] = checkpt->stop;
+    response[10] = checkpt->enabled;
+    response[11] = op;
+    response[12] = checkpt->temporary;
+    uint32_to_little_endian((uint32_t)checkpt->hit_count, &response[13]);
+    uint32_to_little_endian((uint32_t)checkpt->ignore_count, &response[17]);
+    response[21] = !!checkpt->condition;
+
+    monitor_binary_response(sizeof (response), e_MON_RESPONSE_CHECKPOINT_INFO, 0, request_id, response);
 }
 
 static void monitor_binary_error(uint8_t errorcode, uint32_t request_id)
@@ -430,8 +493,34 @@ static void monitor_binary_process_ping(binary_command_t *command) {
     monitor_binary_response(0, e_MON_RESPONSE_PING, MON_ERR_OK, command->request_id, NULL);
 }
 
+static void monitor_binary_process_checkpoint_set(binary_command_t *command) {
+    int brknum;
+    mon_checkpoint_t *checkpt;
+
+    if (command->command_length < 8) {
+        monitor_binary_error(MON_ERR_CMD_INVALID_LENGTH, command->request_id);
+    }
+
+    brknum = mon_breakpoint_add_checkpoint(
+        (MON_ADDR)little_endian_to_uint16(&command->command_body[0]),
+        (MON_ADDR)little_endian_to_uint16(&command->command_body[2]),
+        (bool)command->command_body[4],
+        (MEMORY_OP)command->command_body[6],
+        (bool)command->command_body[7]
+        );
+
+    if (!command->command_body[5]) {
+        mon_breakpoint_switch_checkpoint(e_OFF, brknum);
+    }
+
+    checkpt = mon_breakpoint_find_checkpoint(brknum);
+
+    monitor_binary_response_checkpoint_info(command->request_id, checkpt);
+}
+
 static void monitor_binary_process_command(unsigned char * pbuffer, int buffer_size, int * pbuffer_pos) {
     binary_command_t *command = lib_malloc(sizeof(binary_command_t));
+    BINARY_COMMAND command_type;
 
     command->api_version = (uint8_t)pbuffer[1];
 
@@ -447,12 +536,13 @@ static void monitor_binary_process_command(unsigned char * pbuffer, int buffer_s
         command->command_body = &pbuffer[8];
     }
 
-    int ok = 1;
+    command_type = command->command_type;
 
-    if(command->command_type == e_MON_CMD_PING) {
+    if(command_type == e_MON_CMD_PING) {
         monitor_binary_process_ping(command);
-    }
-    else {
+    } else if(command_type == e_MON_CMD_CHECKPOINT_SET) {
+        monitor_binary_process_checkpoint_set(command);
+    } else {
         log_message(LOG_DEFAULT,
                 "monitor_network binary command: unknown command %d, "
                 "skipping command length of %u",

@@ -163,28 +163,6 @@ struct cond_node_s {
 };
 typedef struct cond_node_s cond_node_t;
 
-enum t_binary_command {
-    e_MON_CMD_PING = 0x80,
-    e_MON_CMD_MEMDUMP = 0x01
-};
-typedef enum t_binary_command BINARY_COMMAND;
-
-enum t_binary_response {
-    e_MON_RESPONSE_MEMDUMP = 0x01,
-    e_MON_RESPONSE_PING = 0x80,
-    e_MON_RESPONSE_JAM = 0x81,
-};
-typedef enum t_binary_response BINARY_RESPONSE;
-
-struct binary_command_s {
-    uint8_t api_version;
-    uint8_t command_length;
-    uint32_t request_id;
-    BINARY_COMMAND command_type;
-    unsigned char *command_body;
-};
-typedef struct binary_command_s binary_command_t;
-
 typedef void monitor_toggle_func_t(int value);
 
 /* Defines */
