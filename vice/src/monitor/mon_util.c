@@ -40,6 +40,7 @@
 #include "mon_util.h"
 #include "monitor.h"
 #include "monitor_network.h"
+#include "monitor_binary.h"
 #include "types.h"
 #include "uimon.h"
 
@@ -167,8 +168,10 @@ int mon_out(const char *format, ...)
     va_end(ap);
 
 #ifdef HAVE_NETWORK
-    if (monitor_is_remote()) {
-        rc = monitor_network_transmit(buffer, strlen(buffer));
+    if (monitor_is_remote() || monitor_is_binary()) {
+        if(monitor_is_remote()) {
+            rc = monitor_network_transmit(buffer, strlen(buffer));
+        }
     } else {
 #endif
         rc = mon_out_buffered(buffer);
@@ -257,19 +260,33 @@ char *uimon_in(const char *prompt)
 {
     char *p = NULL;
 
+    if (monitor_is_remote()) {
+        if (monitor_network_transmit(prompt, strlen(prompt)) < 0) {
+            return NULL;
+        }
+    }
+
     while (!p && !pchCommandLine) {
         /* as long as we don't have any return value... */
 
 #ifdef HAVE_NETWORK
-        if (monitor_is_remote()) {
-            if (monitor_network_transmit(prompt, strlen(prompt)) < 0) {
-              return NULL;
+        if (monitor_is_remote() || monitor_is_binary()) {
+            if (monitor_is_binary()) {
+                if(!monitor_binary_get_command_line()) {
+                    mon_set_command(NULL, "x", NULL);
+                    return NULL;
+                }
+            } else {
+                monitor_check_binary();
             }
 
-            p = monitor_network_get_command_line();
-            if (p == NULL) {
-                mon_set_command(NULL, "x", NULL);
-                return NULL;
+            if (monitor_is_remote()) {
+                if (!monitor_network_get_command_line(&p)) {
+                    mon_set_command(NULL, "x", NULL);
+                    return NULL;
+                }
+            } else {
+                monitor_check_remote();
             }
         } else {
 #endif

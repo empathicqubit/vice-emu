@@ -80,6 +80,7 @@
 #include "mon_util.h"
 #include "monitor.h"
 #include "monitor_network.h"
+#include "monitor_binary.h"
 #include "montypes.h"
 #include "resources.h"
 #include "screenshot.h"
@@ -2381,7 +2382,7 @@ static void monitor_open(void)
     mon_console_suspend_on_leaving = 1;
     mon_console_close_on_leaving = 0;
 
-    if (monitor_is_remote()) {
+    if (monitor_is_remote() || monitor_is_binary()) {
         static console_t console_log_remote = { 80, 25, 0, 0, NULL };
         console_log = &console_log_remote;
     } else {

@@ -16,6 +16,7 @@ Makefile*
 *.cache
 configure
 configure.ac
+.vscode/
 
 vice/src/resid*/sid*defs.h
 vice/src/resid*/wave????_???.h

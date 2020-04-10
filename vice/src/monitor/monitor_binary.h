@@ -1,8 +1,8 @@
-/*! \file monitor_network.h \n
+/*! \file monitor_binary.h \n
  *  \author Spiro Trikaliotis
- *  \brief   Monitor implementation - network access
+ *  \brief   Monitor implementation - binary access
  *
- * monitor_network.h - Monitor implementation - network access.
+ * monitor_binary.h - Monitor implementation - binary access.
  *
  * Written by
  *  Spiro Trikaliotis <spiro.trikaliotis@gmx.de>
@@ -28,23 +28,24 @@
  */
 
 
-#ifndef VICE_MONITOR_NETWORK_H
-#define VICE_MONITOR_NETWORK_H
+#ifndef VICE_MONITOR_BINARY_H
+#define VICE_MONITOR_BINARY_H
 
 #include "types.h"
 #include "uiapi.h"
 
-extern int monitor_network_resources_init(void);
-extern void monitor_network_resources_shutdown(void);
-extern int monitor_network_cmdline_options_init(void);
+extern int monitor_binary_resources_init(void);
+extern void monitor_binary_resources_shutdown(void);
+extern int monitor_binary_cmdline_options_init(void);
 
-extern void monitor_check_remote(void);
-extern int monitor_network_receive(char * buffer, size_t buffer_length);
-extern int monitor_network_transmit(const char * buffer, size_t buffer_length);
-extern int monitor_network_get_command_line(char **prompt);
+extern void monitor_check_binary(void);
 
-extern int monitor_is_remote(void);
+extern int monitor_binary_receive(char * buffer, size_t buffer_length);
+extern int monitor_binary_transmit(const char * buffer, size_t buffer_length);
+extern int monitor_binary_get_command_line(void);
 
-extern ui_jam_action_t monitor_network_ui_jam_dialog(const char *format, ...);
+extern int monitor_is_binary(void);
+
+extern ui_jam_action_t monitor_binary_ui_jam_dialog(const char *format, ...);
 
 #endif

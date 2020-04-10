@@ -321,12 +321,15 @@ static void monitor_network_process_binary_command(unsigned char * pbuffer, int 
 }
 
 
-char * monitor_network_get_command_line(void)
+int monitor_network_get_command_line(char **prompt)
 {
     static char buffer[260] = { 0 };
     static int bufferpos = 0;
 
-    char * p = NULL;
+    if(!monitor_network_data_available()) {
+        ui_dispatch_events();
+        return 1;
+    }
 
     do {
         /* Do not read more from network until all commands in current buffer is fully processed */
@@ -338,7 +341,8 @@ char * monitor_network_get_command_line(void)
                 bufferpos += n;
             } else if (n <= 0) {
                 monitor_network_quit();
-                break;
+                *prompt = NULL;
+                return 0;
             }
 
             /* check if we got a binary command */
@@ -363,8 +367,8 @@ char * monitor_network_get_command_line(void)
             }
             monitor_binary_input = 0;
         } else {
-            p = monitor_network_extract_text_command_line(buffer, sizeof buffer, &bufferpos);
-            if (p) {
+            *prompt = monitor_network_extract_text_command_line(buffer, sizeof buffer, &bufferpos);
+            if (*prompt) {
                 break;
             } else {
                 /* if no cmd was returned - reset buffer to start and fetch new cmd. */
@@ -375,7 +379,7 @@ char * monitor_network_get_command_line(void)
         ui_dispatch_events();
     } while (1);
 
-    return p;
+    return 1;
 }
 
 static int monitor_network_activate(void)
