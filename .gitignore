@@ -10,7 +10,8 @@ config.status
 *.info*
 *.txt
 .deps/
-Makefile*
+Makefile
+Makefile.in
 *.html
 *.log
 *.cache
