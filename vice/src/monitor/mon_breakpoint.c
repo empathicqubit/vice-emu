@@ -402,7 +402,9 @@ static int compare_checkpoints(mon_checkpoint_t *bp1, mon_checkpoint_t *bp2)
 
 static void mon_breakpoint_event(mon_checkpoint_t *checkpt) {
     #ifdef HAVE_NETWORK
-        monitor_binary_response_checkpoint_info(0xffffffff, checkpt, 1);
+        if(monitor_is_binary()) {
+            monitor_binary_response_checkpoint_info(0xffffffff, checkpt, 1);
+        }
     #endif
 }
 

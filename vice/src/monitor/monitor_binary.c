@@ -56,19 +56,40 @@ static vice_network_socket_t * connected_socket = NULL;
 static char *monitor_binary_server_address = NULL;
 static int monitor_binary_enabled = 0;
 
-static int monitor_binary_input = 0;
-
 enum t_binary_command {
-    e_MON_CMD_CHECKPOINT_SET = 0x03,
+    e_MON_CMD_MEMDUMP = 0x01,
+
+    e_MON_CMD_CHECKPOINT_GET = 0x10,
+    e_MON_CMD_CHECKPOINT_SET = 0x11,
+    e_MON_CMD_CHECKPOINT_DELETE = 0x12,
+    e_MON_CMD_CHECKPOINT_LIST = 0x13,
+
+    e_MON_CMD_COND_GET = 0x20,
+    e_MON_CMD_COND_SET = 0x21,
+
+    e_MON_CMD_REGISTERS_GET = 0x30,
+    e_MON_CMD_REGISTERS_SET = 0x31,
+
+    e_MON_CMD_EXIT = 0x70,
+    e_MON_CMD_QUIT = 0x71,
+    e_MON_CMD_ADVANCE_INSTRUCTIONS = 0x72,
 
     e_MON_CMD_PING = 0x80,
-    e_MON_CMD_MEMDUMP = 0x01
 };
 typedef enum t_binary_command BINARY_COMMAND;
 
 enum t_binary_response {
     e_MON_RESPONSE_MEMDUMP = 0x01,
-    e_MON_RESPONSE_CHECKPOINT_INFO = 0x02,
+
+    e_MON_RESPONSE_CHECKPOINT_INFO = 0x10,
+
+    e_MON_RESPONSE_COND_INFO = 0x20,
+
+    e_MON_RESPONSE_REGISTER_INFO = 0x30,
+
+    e_MON_RESPONSE_EXIT = 0x70,
+    e_MON_RESPONSE_QUIT = 0x71,
+    e_MON_RESPONSE_ADVANCE_INSTRUCTIONS = 0x72,
 
     e_MON_RESPONSE_PING = 0x80,
     e_MON_RESPONSE_JAM = 0x81,
@@ -290,7 +311,7 @@ Response body:
 Currently empty.
 
 -----------------------------------
-0x06: MON_CMD_REGISTERS_GET
+0x30: MON_CMD_REGISTERS_GET
 -----------------------------------
 
 Get details about the registers
@@ -301,14 +322,14 @@ Currently empty.
 
 Response type:
 
-0x06: MON_RESPONSE_REGISTER_INFO
+0x30: MON_RESPONSE_REGISTER_INFO
 
 Response body:
 
 See the section REGISTERS RESPONSE
 
 -----------------------------------
-0x07: MON_CMD_REGISTERS_SET
+0x31: MON_CMD_REGISTERS_SET
 -----------------------------------
 
 Set the register values
@@ -320,6 +341,70 @@ byte 1: The size of each entry
 byte 2+: An array with items of structure:
     byte 0: ID of the register
     byte 1-2: register value
+
+Response type:
+
+0x30: MON_RESPONSE_REGISTER_INFO
+
+Response body:
+
+See the section REGISTERS RESPONSE
+
+-----------------------------------
+0x70: MON_CMD_EXIT
+-----------------------------------
+
+Exit the monitor until the next breakpoint.
+
+Command body:
+
+Currently empty.
+
+Response type:
+
+0x70: MON_RESPONSE_EXIT
+
+Response body:
+
+Currently empty.
+
+-----------------------------------
+0x71: MON_CMD_QUIT
+-----------------------------------
+
+Quits VICE.
+
+Command body:
+
+Currently empty.
+
+Response type:
+
+0x71: MON_RESPONSE_QUIT
+
+Response body:
+
+Currently empty.
+
+-----------------------------------
+0x72: MON_CMD_ADVANCE_INSTRUCTIONS
+-----------------------------------
+
+Step over a certain number of instructions.
+
+Command body:
+
+byte 0: Step over subroutines?
+    Should subroutines count as a single instruction?
+byte 1-2: How many instructions to step over.
+
+Response type:
+
+0x72: MON_RESPONSE_ADVANCE_INSTRUCTIONS
+
+Response body:
+
+Currently empty.
 
 -------------------
 0x80: MON_CMD_PING
@@ -453,7 +538,7 @@ static void monitor_binary_response(uint32_t length, uint8_t response_type, uint
 }
 
 void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_checkpoint_t *checkpt, bool hit) {
-    unsigned char response[21];
+    unsigned char response[22];
     MEMORY_OP op = (MEMORY_OP)(
         (checkpt->check_store ? e_store : 0) 
         | (checkpt->check_load ? e_load : 0) 
@@ -482,20 +567,19 @@ static void monitor_binary_error(uint8_t errorcode, uint32_t request_id)
     monitor_binary_response(0, 0, errorcode, request_id, NULL);
 }
 
-static void monitor_binary_process_ping(binary_command_t *command) {
-    if(command->command_length != 0) {
-        monitor_binary_error(MON_ERR_CMD_INVALID_LENGTH, command->request_id);
-    }
-
+static int monitor_binary_process_ping(binary_command_t *command) {
     monitor_binary_response(0, e_MON_RESPONSE_PING, MON_ERR_OK, command->request_id, NULL);
+
+    return 1;
 }
 
-static void monitor_binary_process_checkpoint_set(binary_command_t *command) {
+static int monitor_binary_process_checkpoint_set(binary_command_t *command) {
     int brknum;
     mon_checkpoint_t *checkpt;
 
     if (command->command_length < 8) {
         monitor_binary_error(MON_ERR_CMD_INVALID_LENGTH, command->request_id);
+        return 1;
     }
 
     brknum = mon_breakpoint_add_checkpoint(
@@ -513,32 +597,54 @@ static void monitor_binary_process_checkpoint_set(binary_command_t *command) {
     checkpt = mon_breakpoint_find_checkpoint(brknum);
 
     monitor_binary_response_checkpoint_info(command->request_id, checkpt, 0);
+
+    return 1;
 }
 
-static void monitor_binary_process_command(unsigned char * pbuffer, int buffer_size, int * pbuffer_pos) {
+static int monitor_binary_process_exit(binary_command_t *command) {
+    monitor_binary_response(0, e_MON_RESPONSE_EXIT, 0, command->request_id, NULL);
+
+    return 0;
+}
+
+static int monitor_binary_process_quit(binary_command_t *command) {
+    mon_quit();
+
+    monitor_binary_response(0, e_MON_RESPONSE_QUIT, 0, command->request_id, NULL);
+
+    return 0;
+}
+
+static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_size, int * pbuffer_pos) {
     binary_command_t *command = lib_malloc(sizeof(binary_command_t));
     BINARY_COMMAND command_type;
+    int min_length;
+    int cont;
 
     command->api_version = (uint8_t)pbuffer[1];
 
-    if(command->api_version != 0x01) {
+    if (command->api_version != 0x01) {
         monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
         return;
     }
 
-    if(command->api_version >= 0x01) {
-        command->command_length = (uint8_t)pbuffer[2];
+    command->command_length = (uint8_t)pbuffer[2];
+
+    if (command->api_version >= 0x01) {
         command->request_id = little_endian_to_uint32(&pbuffer[3]);
         command->command_type = pbuffer[7];
         command->command_body = &pbuffer[8];
     }
 
     command_type = command->command_type;
-
-    if(command_type == e_MON_CMD_PING) {
-        monitor_binary_process_ping(command);
+    if (command_type == e_MON_CMD_PING) {
+        cont = monitor_binary_process_ping(command);
     } else if(command_type == e_MON_CMD_CHECKPOINT_SET) {
-        monitor_binary_process_checkpoint_set(command);
+        cont = monitor_binary_process_checkpoint_set(command);
+    } else if(command_type == e_MON_CMD_EXIT) {
+        cont = monitor_binary_process_exit(command);
+    } else if(command_type == e_MON_CMD_QUIT) {
+        cont = monitor_binary_process_quit(command);
     } else {
         log_message(LOG_DEFAULT,
                 "monitor_network binary command: unknown command %d, "
@@ -550,47 +656,64 @@ static void monitor_binary_process_command(unsigned char * pbuffer, int buffer_s
     pbuffer[0] = 0;
 
     lib_free(command);
+
+    return cont;
 }
 
 int monitor_binary_get_command_line(void)
 {
-    static char buffer[260] = { 0 };
+    static char buffer[300] = { 0 };
     static int bufferpos = 0;
 
-    if(!monitor_binary_data_available()) {
+    while(monitor_binary_data_available()) {
+        /* Do not read more from network until all commands in current buffer is fully processed */
+        int body_length;
+        uint8_t api_version;
+        int header_size = 8;
+
+        int n = monitor_binary_receive(buffer, 1);
+        if (!n) {
+            monitor_binary_quit();
+            return 0;
+        }
+        
+        if (buffer[0] != ASC_STX) {
+            continue;
+        }
+
+        n = monitor_binary_receive(&buffer[1], 2);
+
+        if (n < 2) {
+            monitor_binary_quit();
+            return 0;
+        }
+
+        api_version = buffer[1];
+        body_length = buffer[2];
+
+        if (api_version == 0x01) {
+            header_size = 8;
+        } else {
+            continue;
+        }
+
+        n = monitor_binary_receive(&buffer[3], header_size - 3 + body_length);
+
+        if (n < header_size - 3 + body_length) {
+            monitor_binary_quit();
+            return 0;
+        }
+
         ui_dispatch_events();
-        return 1;
+
+        if(!monitor_binary_process_command((unsigned char*)buffer, sizeof buffer, &bufferpos)) {
+            return 0;
+        }
     }
 
-    do {
-        /* Do not read more from network until all commands in current buffer is fully processed */
-        if (bufferpos == 0) {
-            int n = monitor_binary_receive(buffer + bufferpos,
-                            sizeof buffer - (size_t)(bufferpos - 1));
+    ui_dispatch_events();
 
-            if (n > 0) {
-                bufferpos += n;
-            } else if (n <= 0) {
-                monitor_binary_quit();
-                return 0;
-            }
-
-            /* check if we got a binary command */
-            if (bufferpos == n) {
-                if (buffer[0] == ASC_STX) {
-                    monitor_binary_input = 1;
-                }
-            }
-        }
-
-        if (monitor_binary_input) {
-            monitor_binary_process_command((unsigned char*)buffer, sizeof buffer, &bufferpos);
-            monitor_binary_input = 0;
-            return 1;
-        }
-
-        ui_dispatch_events();
-    } while (1);
+    return 1;
 }
 
 static int monitor_binary_activate(void)
@@ -774,19 +897,7 @@ int monitor_is_binary(void)
 
 ui_jam_action_t monitor_binary_ui_jam_dialog(const char *format, ...)
 {
-    char * txt;
-
-    char init_string[] = "An error occurred: ";
-    char end_string[] = "\n";
-
-    va_list ap;
-    va_start(ap, format);
-    txt = lib_mvsprintf(format, ap);
-    va_end(ap);
-
     monitor_binary_response(0, e_MON_RESPONSE_JAM, 0, MON_EVENT_ID, NULL);
-
-    lib_free(txt);
 
     return UI_JAM_MONITOR;
 }

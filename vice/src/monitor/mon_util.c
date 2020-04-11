@@ -168,10 +168,8 @@ int mon_out(const char *format, ...)
     va_end(ap);
 
 #ifdef HAVE_NETWORK
-    if (monitor_is_remote() || monitor_is_binary()) {
-        if(monitor_is_remote()) {
-            rc = monitor_network_transmit(buffer, strlen(buffer));
-        }
+    if (monitor_is_remote()) {
+        rc = monitor_network_transmit(buffer, strlen(buffer));
     } else {
 #endif
         rc = mon_out_buffered(buffer);
@@ -274,7 +272,7 @@ char *uimon_in(const char *prompt)
             if (monitor_is_binary()) {
                 if (!monitor_binary_get_command_line()) {
                     mon_set_command(NULL, "x", NULL);
-                    return NULL;
+                    break;
                 }
             } else {
                 monitor_check_binary();
@@ -283,7 +281,7 @@ char *uimon_in(const char *prompt)
             if (monitor_is_remote()) {
                 if (!monitor_network_get_command_line(&p)) {
                     mon_set_command(NULL, "x", NULL);
-                    return NULL;
+                    break;
                 }
             } else {
                 monitor_check_remote();
