@@ -2525,7 +2525,7 @@ static void monitor_close(int check)
 
     /* last_cmd = NULL; */
 
-    if (!monitor_is_remote()) {
+    if (!monitor_is_remote() && !monitor_is_binary()) {
         if (mon_console_suspend_on_leaving) {
             /*
                 if there is no log, or if the console can not stay open when the emulation

@@ -46,6 +46,8 @@
 
 #include "mon_breakpoint.h"
 
+#include "mon_register.h"
+
 #ifdef HAVE_NETWORK
 
 #define ADDR_LIMIT(x) ((uint16_t)(addr_mask(x)))
@@ -537,6 +539,45 @@ static void monitor_binary_response(uint32_t length, uint8_t response_type, uint
     }
 }
 
+static void monitor_binary_response_register_info(uint32_t request_id) {
+    unsigned char *response;
+    uint8_t count;
+    uint32_t response_size;
+    uint8_t item_size = 3;
+    int offset = 0;
+    mon_reg_list_t *regs = mon_register_list_get(e_comp_space);
+    mon_reg_list_t *cursor = regs;
+
+    do {
+        ++cursor;
+    } while(cursor->name);
+
+    count = cursor - regs;
+
+    response_size = count * item_size + 2;
+    response = lib_malloc(response_size);
+
+    cursor = regs;
+
+    response[offset] = count;
+    ++offset;
+    response[offset] = item_size;
+    ++offset;
+    do {
+        response[offset] = cursor->id;
+        ++offset;
+        response[offset] = cursor->size;
+        ++offset;
+        uint16_to_little_endian((uint16_t)cursor->val, &response[offset]);
+        offset += 2;
+        ++cursor;
+    } while(cursor->name);
+
+    monitor_binary_response(response_size, e_MON_RESPONSE_REGISTER_INFO, 0, request_id, response);
+
+    lib_free(response);
+}
+
 void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_checkpoint_t *checkpt, bool hit) {
     unsigned char response[22];
     MEMORY_OP op = (MEMORY_OP)(
@@ -576,6 +617,7 @@ static int monitor_binary_process_ping(binary_command_t *command) {
 static int monitor_binary_process_checkpoint_set(binary_command_t *command) {
     int brknum;
     mon_checkpoint_t *checkpt;
+    unsigned char *body = command->command_body;
 
     if (command->command_length < 8) {
         monitor_binary_error(MON_ERR_CMD_INVALID_LENGTH, command->request_id);
@@ -583,20 +625,46 @@ static int monitor_binary_process_checkpoint_set(binary_command_t *command) {
     }
 
     brknum = mon_breakpoint_add_checkpoint(
-        (MON_ADDR)little_endian_to_uint16(&command->command_body[0]),
-        (MON_ADDR)little_endian_to_uint16(&command->command_body[2]),
-        (bool)command->command_body[4],
-        (MEMORY_OP)command->command_body[6],
-        (bool)command->command_body[7]
+        (MON_ADDR)little_endian_to_uint16(&body[0]),
+        (MON_ADDR)little_endian_to_uint16(&body[2]),
+        (bool)body[4],
+        (MEMORY_OP)body[6],
+        (bool)body[7]
         );
 
-    if (!command->command_body[5]) {
+    if (!body[5]) {
         mon_breakpoint_switch_checkpoint(e_OFF, brknum);
     }
 
     checkpt = mon_breakpoint_find_checkpoint(brknum);
 
     monitor_binary_response_checkpoint_info(command->request_id, checkpt, 0);
+
+    return 1;
+}
+
+static int monitor_binary_process_advance_instructions(binary_command_t *command) {
+    uint8_t step_over_subroutines = command->command_body[0];
+    uint16_t count = little_endian_to_uint16(&command->command_body[1]);
+
+    if (command->command_length < 3) {
+        monitor_binary_error(MON_ERR_CMD_INVALID_LENGTH, command->request_id);
+        return 1;
+    }
+
+    if (step_over_subroutines) {
+        mon_instructions_next(count);
+    } else {
+        mon_instructions_step(count);
+    }
+
+    monitor_binary_response(0, e_MON_RESPONSE_ADVANCE_INSTRUCTIONS, 0, command->request_id, NULL);
+
+    return 0;
+}
+
+static int monitor_binary_process_registers_get(binary_command_t *command) {
+    monitor_binary_response_register_info(command->request_id);
 
     return 1;
 }
@@ -641,10 +709,14 @@ static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_si
         cont = monitor_binary_process_ping(command);
     } else if(command_type == e_MON_CMD_CHECKPOINT_SET) {
         cont = monitor_binary_process_checkpoint_set(command);
+    } else if(command_type == e_MON_CMD_REGISTERS_GET) {
+        cont = monitor_binary_process_registers_get(command);
     } else if(command_type == e_MON_CMD_EXIT) {
         cont = monitor_binary_process_exit(command);
     } else if(command_type == e_MON_CMD_QUIT) {
         cont = monitor_binary_process_quit(command);
+    } else if(command_type == e_MON_CMD_ADVANCE_INSTRUCTIONS) {
+        cont = monitor_binary_process_advance_instructions(command);
     } else {
         log_message(LOG_DEFAULT,
                 "monitor_network binary command: unknown command %d, "
@@ -660,6 +732,36 @@ static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_si
     return cont;
 }
 
+static int monitor_binary_activate(void)
+{
+    vice_network_socket_address_t * server_addr = NULL;
+    int error = 1;
+
+    do {
+        if (!monitor_binary_server_address) {
+            break;
+        }
+
+        server_addr = vice_network_address_generate(monitor_binary_server_address, 0);
+        if (!server_addr) {
+            break;
+        }
+
+        listen_socket = vice_network_server(server_addr);
+        if (!listen_socket) {
+            break;
+        }
+
+        error = 0;
+    } while (0);
+
+    if (server_addr) {
+        vice_network_address_close(server_addr);
+    }
+
+    return error;
+}
+
 int monitor_binary_get_command_line(void)
 {
     static char buffer[300] = { 0 };
@@ -672,7 +774,10 @@ int monitor_binary_get_command_line(void)
         int header_size = 8;
 
         int n = monitor_binary_receive(buffer, 1);
-        if (!n) {
+        if (n == 0) {
+            monitor_binary_quit();
+            return 0;
+        } else if (n < 0) {
             monitor_binary_quit();
             return 0;
         }
@@ -714,36 +819,6 @@ int monitor_binary_get_command_line(void)
     ui_dispatch_events();
 
     return 1;
-}
-
-static int monitor_binary_activate(void)
-{
-    vice_network_socket_address_t * server_addr = NULL;
-    int error = 1;
-
-    do {
-        if (!monitor_binary_server_address) {
-            break;
-        }
-
-        server_addr = vice_network_address_generate(monitor_binary_server_address, 0);
-        if (!server_addr) {
-            break;
-        }
-
-        listen_socket = vice_network_server(server_addr);
-        if (!listen_socket) {
-            break;
-        }
-
-        error = 0;
-    } while (0);
-
-    if (server_addr) {
-        vice_network_address_close(server_addr);
-    }
-
-    return error;
 }
 
 static int monitor_binary_deactivate(void)
