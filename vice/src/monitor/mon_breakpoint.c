@@ -93,7 +93,77 @@ static void remove_checkpoint_from_list(checkpoint_list_t **head, mon_checkpoint
     }
 }
 
-/* find the breakpoint with number 'brknum' in the linked list */
+/** \brief Get a list of all checkpoints
+ *
+ * \param[out]  len     length of the returned array
+ * 
+ * \return The list of checkpoints
+ */
+mon_checkpoint_t **mon_breakpoint_checkpoint_list_get(unsigned int *len) {
+    checkpoint_list_t *ptr;
+    int i;
+    mon_checkpoint_t **concat;
+
+    *len = 0;
+
+    for (i = FIRST_SPACE; i <= LAST_SPACE; i++) {
+        ptr = breakpoints[i];
+        while (ptr) {
+            ++*len;
+            ptr = ptr->next;
+        }
+
+        ptr = watchpoints_load[i];
+        while (ptr) {
+            ++*len;
+            ptr = ptr->next;
+        }
+
+        ptr = watchpoints_store[i];
+        while (ptr) {
+            ++*len;
+            ptr = ptr->next;
+        }
+    }
+
+    concat = lib_malloc(sizeof(mon_checkpoint_t *) * *len);
+
+    *len = -1;
+
+    for (i = FIRST_SPACE; i <= LAST_SPACE; i++) {
+        ptr = breakpoints[i];
+        while (ptr) {
+            ++*len;
+            concat[*len] = ptr->checkpt;
+            ptr = ptr->next;
+        }
+
+        ptr = watchpoints_load[i];
+        while (ptr) {
+            ++*len;
+            concat[*len] = ptr->checkpt;
+            ptr = ptr->next;
+        }
+
+        ptr = watchpoints_store[i];
+        while (ptr) {
+            ++*len;
+            concat[*len] = ptr->checkpt;
+            ptr = ptr->next;
+        }
+    }
+
+    ++*len;
+
+    return concat;
+}
+
+/** \brief find the breakpoint with number 'brknum' in the linked list
+ *
+ * \param[in]  brknum     breakpoint number
+ * 
+ * \return The checkpoint that has brknum, or NULL
+ */
 mon_checkpoint_t *mon_breakpoint_find_checkpoint(int brknum)
 {
     checkpoint_list_t *ptr;

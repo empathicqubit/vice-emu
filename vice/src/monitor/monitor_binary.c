@@ -84,6 +84,8 @@ enum t_binary_response {
     e_MON_RESPONSE_MEMDUMP = 0x01,
 
     e_MON_RESPONSE_CHECKPOINT_INFO = 0x10,
+    e_MON_RESPONSE_CHECKPOINT_DELETE = 0x12,
+    e_MON_RESPONSE_CHECKPOINT_LIST = 0x13,
 
     e_MON_RESPONSE_COND_INFO = 0x20,
 
@@ -100,10 +102,10 @@ typedef enum t_binary_response BINARY_RESPONSE;
 
 struct binary_command_s {
     uint8_t api_version;
-    uint8_t command_length;
+    uint8_t length;
     uint32_t request_id;
-    BINARY_COMMAND command_type;
-    unsigned char *command_body;
+    BINARY_COMMAND type;
+    unsigned char *body;
 };
 typedef struct binary_command_s binary_command_t;
 
@@ -257,7 +259,7 @@ Response body:
 byte 0+: The memory at the address.
 
 ----------------------
-0x03: MON_CMD_CHECKPOINT_SET
+0x11: MON_CMD_CHECKPOINT_SET
 ----------------------
 
 Sets any type of checkpoint. This combines the functionality of several
@@ -290,6 +292,23 @@ Response type:
 Response body:
 
 See the section CHECKPOINT RESPONSE
+
+----------------------
+0x11: MON_CMD_CHECKPOINT_LIST
+----------------------
+
+Response type:
+
+Emits a series of MON_RESPONSE_CHECKPOINT_INFO responses
+(See the section CHECKPOINT RESPONSE) followed by
+
+0x13: MON_RESPONSE_CHECKPOINT_LIST
+
+Response body:
+
+MON_RESPONSE_CHECKPOINT_LIST:
+
+byte 0-3: The total number of checkpoints
 
 -----------------------------------
 0x05: MON_CMD_COND_SET
@@ -614,12 +633,31 @@ static int monitor_binary_process_ping(binary_command_t *command) {
     return 1;
 }
 
+static int monitor_binary_process_checkpoint_list(binary_command_t *command) {
+    unsigned char response[sizeof(uint32_t)];
+    unsigned int i, len;
+    uint32_t request_id = command->request_id;
+    mon_checkpoint_t **checkpts = mon_breakpoint_checkpoint_list_get(&len);
+
+    for(i = 0; i < len; i++) {
+        monitor_binary_response_checkpoint_info(request_id, checkpts[i], 0);
+    }
+
+    uint32_to_little_endian((uint32_t)len, &response[0]);
+
+    monitor_binary_response(sizeof(uint32_t), e_MON_RESPONSE_CHECKPOINT_LIST, 0, request_id, response);
+
+    lib_free(checkpts);
+
+    return 1;
+}
+
 static int monitor_binary_process_checkpoint_set(binary_command_t *command) {
     int brknum;
     mon_checkpoint_t *checkpt;
-    unsigned char *body = command->command_body;
+    unsigned char *body = command->body;
 
-    if (command->command_length < 8) {
+    if (command->length < 8) {
         monitor_binary_error(MON_ERR_CMD_INVALID_LENGTH, command->request_id);
         return 1;
     }
@@ -644,10 +682,10 @@ static int monitor_binary_process_checkpoint_set(binary_command_t *command) {
 }
 
 static int monitor_binary_process_advance_instructions(binary_command_t *command) {
-    uint8_t step_over_subroutines = command->command_body[0];
-    uint16_t count = little_endian_to_uint16(&command->command_body[1]);
+    uint8_t step_over_subroutines = command->body[0];
+    uint16_t count = little_endian_to_uint16(&command->body[1]);
 
-    if (command->command_length < 3) {
+    if (command->length < 3) {
         monitor_binary_error(MON_ERR_CMD_INVALID_LENGTH, command->request_id);
         return 1;
     }
@@ -696,19 +734,21 @@ static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_si
         return;
     }
 
-    command->command_length = (uint8_t)pbuffer[2];
+    command->length = (uint8_t)pbuffer[2];
 
     if (command->api_version >= 0x01) {
         command->request_id = little_endian_to_uint32(&pbuffer[3]);
-        command->command_type = pbuffer[7];
-        command->command_body = &pbuffer[8];
+        command->type = pbuffer[7];
+        command->body = &pbuffer[8];
     }
 
-    command_type = command->command_type;
+    command_type = command->type;
     if (command_type == e_MON_CMD_PING) {
         cont = monitor_binary_process_ping(command);
     } else if(command_type == e_MON_CMD_CHECKPOINT_SET) {
         cont = monitor_binary_process_checkpoint_set(command);
+    } else if(command_type == e_MON_CMD_CHECKPOINT_LIST) {
+        cont = monitor_binary_process_checkpoint_list(command);
     } else if(command_type == e_MON_CMD_REGISTERS_GET) {
         cont = monitor_binary_process_registers_get(command);
     } else if(command_type == e_MON_CMD_EXIT) {
@@ -721,7 +761,7 @@ static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_si
         log_message(LOG_DEFAULT,
                 "monitor_network binary command: unknown command %d, "
                 "skipping command length of %u",
-                command, command->command_length);
+                command, command->length);
     }
 
     *pbuffer_pos = 0;
