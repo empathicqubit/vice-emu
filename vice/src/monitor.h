@@ -111,6 +111,7 @@ struct monitor_interface_s {
 
     int current_bank;
     const char **(*mem_bank_list)(void);
+    const int *(*mem_bank_list_nos)(void);
     int (*mem_bank_from_name)(const char *name);
     uint8_t (*mem_bank_read)(int bank, uint16_t addr, void *context);
     uint8_t (*mem_bank_peek)(int bank, uint16_t addr, void *context);

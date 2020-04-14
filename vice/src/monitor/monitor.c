@@ -623,6 +623,26 @@ void mon_bank(MEMSPACE mem, const char *bankname)
     }
 }
 
+const int mon_banknum_validate(MEMSPACE mem, int banknum)
+{
+    const int *banknums;
+
+    if(!mon_interfaces[mem]->mem_bank_list_nos) {
+        mon_out("Banks not available in this memspace\n");
+        return 0;
+    }
+
+    banknums = mon_interfaces[mem]->mem_bank_list_nos();
+    while(*banknums != -1) {
+        if(banknum == *banknums) {
+            return 1;
+        }
+        ++banknums;
+    }
+
+    return 0;
+}
+
 const char *mon_get_bank_name_for_bank(MEMSPACE mem, int banknum)
 {
     const char **bnp = NULL;
