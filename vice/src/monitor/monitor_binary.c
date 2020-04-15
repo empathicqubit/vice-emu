@@ -83,6 +83,7 @@ typedef enum t_binary_command BINARY_COMMAND;
 
 enum t_binary_response {
     e_MON_RESPONSE_MEMDUMP = 0x01,
+    e_MON_RESPONSE_BANK_INFO = 0x02,
 
     e_MON_RESPONSE_CHECKPOINT_INFO = 0x10,
     e_MON_RESPONSE_CHECKPOINT_DELETE = 0x12,
@@ -253,6 +254,7 @@ byte 4: memspace
 byte 5: bank ID
     Describes which bank you want. This is dependent on your
     machine. Please look at the command MON_CMD_BANKS_GET for details.
+    If the memspace selected doesn't support banks, this byte is ignored.
 
 Response type:
 
@@ -264,10 +266,10 @@ byte 0-1: The length of the memory segment.
 byte 2+: The memory at the address.
 
 ----------------------
-0x01: MON_CMD_BANKS_GET
+0x02: MON_CMD_BANKS_GET
 ----------------------
 
-Gives a listing of all the bank IDs for the running machine.
+Gives a listing of all the bank IDs for the running machine with their names.
 
 Command body:
 
@@ -280,10 +282,11 @@ Response type:
 Response body:
 
 byte 0-1: The count of the array items
-byte 2: The size of each entry
-byte 3+: An array with items of structure:
-    byte 0: ID of the register
-    byte 1-2: register value
+byte 2+: An array with items of structure:
+    byte 0: Size of the item, excluding this byte
+    byte 1-2: ID of the bank
+    byte 3: Length of name
+    byte 4+: Name
 
 ----------------------
 0x11: MON_CMD_CHECKPOINT_SET
@@ -385,10 +388,10 @@ Set the register values
 Command body:
 
 byte 0-1: The count of the array items
-byte 2: The size of each entry
-byte 3+: An array with items of structure:
-    byte 0: ID of the register
-    byte 1-2: register value
+byte 2+: An array with items of structure:
+    byte 0: Size of the item, excluding this byte
+    byte 1: ID of the register
+    byte 2-3: register value
 
 Response type:
 
@@ -482,11 +485,11 @@ Response type:
 Response body:
 
 byte 0-1: The count of the array items
-byte 2: The size of each entry
-byte 3+: An array with items of structure:
-    byte 0: ID of the register
-    byte 1: register size in bits
-    byte 2-3: register value
+byte 2+: An array with items of structure:
+    byte 0: Size of the item, excluding this byte
+    byte 1: ID of the register
+    byte 2: register size in bits
+    byte 3-4: register value
 
 CHECKPOINT RESPONSE
 =====================
@@ -547,11 +550,27 @@ Currently empty.
 #define MON_ERR_CMD_INVALID_LENGTH 0x80  /* command length is not correct */
 #define MON_ERR_INVALID_PARAMETER 0x81  /* command has invalid parameters */
 
-static void uint32_to_little_endian(uint32_t input, unsigned char *output) {
+static unsigned char *write_uint16(uint16_t input, unsigned char *output) {
+    output[0] = input & 0xFFu;
+    output[1] = (input >> 8) & 0xFFu;
+
+    return output + 2;
+}
+
+static unsigned char *write_uint32(uint32_t input, unsigned char *output) {
     output[0] = input & 0xFFu;
     output[1] = (input >> 8) & 0xFFu;
     output[2] = (input >> 16) & 0xFFu;
     output[3] = (uint8_t)(input >> 24) & 0xFFu;
+
+    return output + 4;
+}
+
+static unsigned char *write_string(uint8_t length, unsigned char *input, unsigned char *output) {
+    output[0] = length;
+    memcpy(&output[1], input, length);
+
+    return output + length + 1;
 }
 
 static uint32_t little_endian_to_uint32(unsigned char *input) {
@@ -562,21 +581,16 @@ static uint16_t little_endian_to_uint16(unsigned char *input) {
     return (input[1] << 8) + input[0];
 }
 
-static void uint16_to_little_endian(uint16_t input, unsigned char *output) {
-    output[0] = input & 0xFFu;
-    output[1] = (input >> 8) & 0xFFu;
-}
-
 static void monitor_binary_response(uint32_t length, uint8_t response_type, uint8_t errorcode, uint32_t request_id, unsigned char * body)
 {
     unsigned char response[12];
 
     response[0] = ASC_STX;
     response[1] = MON_BINARY_API_VERSION;
-    uint32_to_little_endian(length, &response[2]);
+    write_uint32(length, &response[2]);
     response[6] = response_type;
     response[7] = errorcode;
-    uint32_to_little_endian(request_id, &response[8]);
+    write_uint32(request_id, &response[8]);
 
     monitor_binary_transmit((char*)response, sizeof response);
 
@@ -589,7 +603,7 @@ static void monitor_binary_response_register_info(uint32_t request_id) {
     unsigned char *response;
     uint16_t count;
     uint32_t response_size = 2;
-    uint8_t item_size = 3;
+    uint8_t item_size = 4;
     mon_reg_list_t *regs = mon_register_list_get(e_comp_space);
     mon_reg_list_t *regs_cursor = regs;
     unsigned char *response_cursor;
@@ -600,26 +614,25 @@ static void monitor_binary_response_register_info(uint32_t request_id) {
 
     count = (regs_cursor - regs) / sizeof(mon_reg_list_t);
 
-    response_size += count * item_size;
+    response_size += count * (item_size + 1);
     response = lib_malloc(response_size);
     response_cursor = response;
 
     regs_cursor = regs;
 
-    uint16_to_little_endian(count, response_cursor);
-    response_cursor += 2;
+    response_cursor = write_uint16(count, response_cursor);
 
-    *response_cursor = item_size;
-    ++response_cursor;
     do {
+        *response_cursor = item_size;
+        ++response_cursor;
+
         *response_cursor = regs_cursor->id;
         ++response_cursor;
 
         *response_cursor = regs_cursor->size;
         ++response_cursor;
 
-        uint16_to_little_endian((uint16_t)regs_cursor->val, response_cursor);
-        response_cursor += 2;
+        response_cursor = write_uint16((uint16_t)regs_cursor->val, response_cursor);
 
         ++regs_cursor;
     } while(regs_cursor->name);
@@ -637,18 +650,18 @@ void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_checkpoint
         | (checkpt->check_exec ? e_exec : 0)
     );
 
-    uint32_to_little_endian(checkpt->checknum, &response[0]);
+    write_uint32(checkpt->checknum, &response[0]);
     response[4] = hit;
 
-    uint16_to_little_endian((uint16_t)addr_location(checkpt->start_addr), &response[5]);
-    uint16_to_little_endian((uint16_t)addr_location(checkpt->end_addr), &response[7]);
+    write_uint16((uint16_t)addr_location(checkpt->start_addr), &response[5]);
+    write_uint16((uint16_t)addr_location(checkpt->end_addr), &response[7]);
     response[9] = checkpt->stop;
     response[10] = checkpt->enabled;
     response[11] = op;
     response[12] = checkpt->temporary;
 
-    uint32_to_little_endian((uint32_t)checkpt->hit_count, &response[13]);
-    uint32_to_little_endian((uint32_t)checkpt->ignore_count, &response[17]);
+    write_uint32((uint32_t)checkpt->hit_count, &response[13]);
+    write_uint32((uint32_t)checkpt->ignore_count, &response[17]);
     response[21] = !!checkpt->condition;
 
     monitor_binary_response(sizeof (response), e_MON_RESPONSE_CHECKPOINT_INFO, MON_ERR_OK, request_id, response);
@@ -675,7 +688,7 @@ static int monitor_binary_process_checkpoint_list(binary_command_t *command) {
         monitor_binary_response_checkpoint_info(request_id, checkpts[i], 0);
     }
 
-    uint32_to_little_endian((uint32_t)len, &response[0]);
+    write_uint32((uint32_t)len, &response[0]);
 
     monitor_binary_response(sizeof(uint32_t), e_MON_RESPONSE_CHECKPOINT_LIST, MON_ERR_OK, request_id, response);
 
@@ -753,6 +766,65 @@ static int monitor_binary_process_quit(binary_command_t *command) {
     return 0;
 }
 
+static int monitor_binary_process_banks_get(binary_command_t *command) {
+    unsigned char *response;
+    unsigned char *response_cursor;
+    const int *banknums;
+    const char **banknames;
+    size_t *item_sizes;
+    uint16_t count;
+
+    unsigned int i = 0;
+    uint32_t response_size = 2;
+
+    if(
+        !mon_interfaces[e_comp_space]->mem_bank_list
+        || !mon_interfaces[e_comp_space]->mem_bank_list_nos
+        ) {
+            // TODO: Better error codes?
+            monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
+            return 1;
+        }
+
+    banknums = mon_interfaces[e_comp_space]->mem_bank_list_nos();
+    banknames = mon_interfaces[e_comp_space]->mem_bank_list();
+
+    while(banknames[i]) {
+        ++i;
+    }
+
+    count = i;
+
+    item_sizes = lib_malloc(sizeof(size_t) * count);
+
+    for(i = 0; i < count; i++) {
+        item_sizes[i] = strlen(banknames[i]) + 3;
+        response_size += item_sizes[i] + 1;
+    }
+
+    response = lib_malloc(response_size);
+    response_cursor = response;
+
+    response_cursor = write_uint16(count, response_cursor);
+
+    for(i = 0; i < count; i++) {
+        size_t item_size = item_sizes[i];
+        *response_cursor = item_size;
+        ++response_cursor;
+
+        response_cursor = write_uint16(banknums[i], response_cursor);
+
+        response_cursor = write_string(item_size - 3, (unsigned char *)banknames[i], response_cursor);
+    }
+
+    monitor_binary_response(response_size, e_MON_RESPONSE_BANK_INFO, MON_ERR_OK, command->request_id, response);
+
+    lib_free(response);
+    lib_free(item_sizes);
+
+    return 1;
+}
+
 static int monitor_binary_process_memdump(binary_command_t *command) {
     unsigned int i;
     unsigned char *response;
@@ -772,7 +844,7 @@ static int monitor_binary_process_memdump(binary_command_t *command) {
 
     uint16_t length = endaddress - startaddress + 1;
 
-    if(command->length < 6) {
+    if(command->length < 5) {
         monitor_binary_error(MON_ERR_CMD_INVALID_LENGTH, command->request_id);
         return 1;
     }
@@ -794,7 +866,7 @@ static int monitor_binary_process_memdump(binary_command_t *command) {
         return 1;
     }
 
-    if (!mon_banknum_validate(memspace, requested_banknum)) {
+    if (mon_banknum_validate(memspace, requested_banknum) == 0) {
         monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
         log_message(LOG_DEFAULT, "monitor binary memdump: Unknown bank %u", requested_banknum);
         return 1;
@@ -814,8 +886,7 @@ static int monitor_binary_process_memdump(binary_command_t *command) {
     response = lib_malloc(response_size);
     response_cursor = response;
 
-    uint16_to_little_endian(length, response_cursor);
-    response_cursor += 2;
+    response_cursor = write_uint16(length, response_cursor);
 
     for (i = 0; i < length; i++) {
         *response_cursor = mon_get_mem_val_ex(memspace, banknum, (uint16_t)ADDR_LIMIT(startaddress + i));
@@ -832,14 +903,13 @@ static int monitor_binary_process_memdump(binary_command_t *command) {
 static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_size, int * pbuffer_pos) {
     binary_command_t *command = lib_malloc(sizeof(binary_command_t));
     BINARY_COMMAND command_type;
-    int min_length;
     int cont;
 
     command->api_version = (uint8_t)pbuffer[1];
 
     if (command->api_version != 0x01) {
         monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
-        return;
+        return 1;
     }
 
     command->length = (uint8_t)pbuffer[2];
@@ -855,6 +925,8 @@ static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_si
         cont = monitor_binary_process_ping(command);
     } else if(command_type == e_MON_CMD_MEMDUMP) {
         cont = monitor_binary_process_memdump(command);
+    } else if(command_type == e_MON_CMD_BANKS_GET) {
+        cont = monitor_binary_process_banks_get(command);
     } else if(command_type == e_MON_CMD_CHECKPOINT_SET) {
         cont = monitor_binary_process_checkpoint_set(command);
     } else if(command_type == e_MON_CMD_CHECKPOINT_LIST) {
@@ -871,7 +943,7 @@ static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_si
         log_message(LOG_DEFAULT,
                 "monitor_network binary command: unknown command %d, "
                 "skipping command length of %u",
-                command, command->length);
+                command->type, command->length);
     }
 
     *pbuffer_pos = 0;
