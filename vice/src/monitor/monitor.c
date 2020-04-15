@@ -2566,6 +2566,8 @@ static void monitor_close(int check)
         }
     }
 
+    mon_event_closed();
+
     if (mon_console_suspend_on_leaving) {
         console_log = NULL;
     }

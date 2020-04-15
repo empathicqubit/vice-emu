@@ -99,6 +99,8 @@ enum t_binary_response {
 
     e_MON_RESPONSE_PING = 0x80,
     e_MON_RESPONSE_JAM = 0x81,
+    e_MON_RESPONSE_STOPPED = 0x82,
+    e_MON_RESPONSE_RESUMED = 0x83,
 };
 typedef enum t_binary_response BINARY_RESPONSE;
 
@@ -536,7 +538,34 @@ Response type:
 
 Response body:
 
-Currently empty.
+byte 0-1: The current program counter position
+
+STOPPED RESPONSE
+===============
+
+When the machine stops for the monitor, 
+either due to hitting a checkpoint or stepping.
+
+Response type:
+
+0x82: MON_RESPONSE_STOPPED
+
+Response body:
+
+byte 0-1: The current program counter position
+
+RESUMED RESPONSE
+===============
+
+When the machine resumes execution for any reason.
+
+Response type:
+
+0x83: MON_RESPONSE_RESUMED
+
+Response body:
+
+byte 0-1: The current program counter position
 
 */
 
@@ -599,6 +628,36 @@ static void monitor_binary_response(uint32_t length, uint8_t response_type, uint
     }
 }
 
+static void monitor_binary_response_stopped(uint32_t request_id) {
+    unsigned char response[2];
+    uint16_t addr = ((uint16_t)((monitor_cpu_for_memspace[e_comp_space]->mon_register_get_val)(e_comp_space, e_PC)));
+
+    write_uint16(addr, &response);
+
+    monitor_binary_response(2, e_MON_RESPONSE_STOPPED, MON_ERR_OK, MON_EVENT_ID, response);
+}
+
+static void monitor_binary_response_resumed(uint32_t request_id) {
+    unsigned char response[2];
+    uint16_t addr = ((uint16_t)((monitor_cpu_for_memspace[e_comp_space]->mon_register_get_val)(e_comp_space, e_PC)));
+
+    write_uint16(addr, &response);
+
+    monitor_binary_response(2, e_MON_RESPONSE_RESUMED, MON_ERR_OK, MON_EVENT_ID, response);
+}
+
+ui_jam_action_t monitor_binary_ui_jam_dialog(const char *format, ...)
+{
+    unsigned char response[2];
+    uint16_t addr = ((uint16_t)((monitor_cpu_for_memspace[e_comp_space]->mon_register_get_val)(e_comp_space, e_PC)));
+
+    write_uint16(addr, &response);
+
+    monitor_binary_response(0, e_MON_RESPONSE_JAM, MON_ERR_OK, MON_EVENT_ID, response);
+
+    return UI_JAM_MONITOR;
+}
+
 void monitor_binary_response_register_info(uint32_t request_id) {
     unsigned char *response;
     uint16_t count;
@@ -640,6 +699,15 @@ void monitor_binary_response_register_info(uint32_t request_id) {
     monitor_binary_response(response_size, e_MON_RESPONSE_REGISTER_INFO, MON_ERR_OK, request_id, response);
 
     lib_free(response);
+}
+
+void monitor_binary_event_opened(void) {
+    monitor_binary_response_register_info(MON_EVENT_ID);
+    monitor_binary_response_stopped(MON_EVENT_ID);
+}
+
+void monitor_binary_event_closed(void) {
+    monitor_binary_response_resumed(MON_EVENT_ID);
 }
 
 void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_checkpoint_t *checkpt, bool hit) {
@@ -1193,13 +1261,6 @@ int monitor_is_binary(void)
     return connected_socket != NULL;
 }
 
-ui_jam_action_t monitor_binary_ui_jam_dialog(const char *format, ...)
-{
-    monitor_binary_response(0, e_MON_RESPONSE_JAM, MON_ERR_OK, MON_EVENT_ID, NULL);
-
-    return UI_JAM_MONITOR;
-}
-
 #else
 
 int monitor_binary_resources_init(void)
@@ -1225,19 +1286,28 @@ int monitor_binary_transmit(const char * buffer, size_t buffer_length)
     return 0;
 }
 
-char * monitor_binary_get_command_line(void)
+int monitor_binary_get_command_line(void)
 {
     return 0;
 }
 
-int monitor_is_remote(void)
+int monitor_is_binary(void)
 {
     return 0;
 }
 
-ui_jam_action_t monitor_network_ui_jam_dialog(const char *format, ...)
+void monitor_binary_event_opened(void) {
+}
+
+void monitor_binary_event_closed(void) {
+}
+
+ui_jam_action_t monitor_binary_ui_jam_dialog(const char *format, ...)
 {
     return UI_JAM_HARD_RESET;
+}
+
+void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_checkpoint_t *checkpt, bool hit) {
 }
 
 #endif
