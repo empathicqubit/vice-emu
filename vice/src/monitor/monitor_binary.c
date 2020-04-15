@@ -59,48 +59,50 @@ static char *monitor_binary_server_address = NULL;
 static int monitor_binary_enabled = 0;
 
 enum t_binary_command {
-    e_MON_CMD_MEMDUMP = 0x01,
-    e_MON_CMD_BANKS_GET = 0x02,
+    e_MON_CMD_MEM_GET = 0x01,
 
-    e_MON_CMD_CHECKPOINT_GET = 0x10,
-    e_MON_CMD_CHECKPOINT_SET = 0x11,
-    e_MON_CMD_CHECKPOINT_DELETE = 0x12,
-    e_MON_CMD_CHECKPOINT_LIST = 0x13,
+    e_MON_CMD_CHECKPOINT_GET = 0x11,
+    e_MON_CMD_CHECKPOINT_SET = 0x12,
+    e_MON_CMD_CHECKPOINT_DELETE = 0x13,
+    e_MON_CMD_CHECKPOINT_LIST = 0x14,
 
-    e_MON_CMD_COND_GET = 0x20,
-    e_MON_CMD_COND_SET = 0x21,
+    e_MON_CMD_COND_GET = 0x21,
+    e_MON_CMD_COND_SET = 0x22,
 
-    e_MON_CMD_REGISTERS_GET = 0x30,
-    e_MON_CMD_REGISTERS_SET = 0x31,
+    e_MON_CMD_REGISTERS_GET = 0x31,
+    e_MON_CMD_REGISTERS_SET = 0x32,
 
-    e_MON_CMD_EXIT = 0x70,
-    e_MON_CMD_QUIT = 0x71,
-    e_MON_CMD_ADVANCE_INSTRUCTIONS = 0x72,
+    e_MON_CMD_EXIT = 0x71,
+    e_MON_CMD_QUIT = 0x72,
+    e_MON_CMD_ADVANCE_INSTRUCTIONS = 0x73,
 
-    e_MON_CMD_PING = 0x80,
+    e_MON_CMD_PING = 0x81,
+    e_MON_CMD_BANKS_GET = 0x82,
 };
 typedef enum t_binary_command BINARY_COMMAND;
 
 enum t_binary_response {
-    e_MON_RESPONSE_MEMDUMP = 0x01,
-    e_MON_RESPONSE_BANK_INFO = 0x02,
+    e_MON_RESPONSE_MEM_GET = 0x01,
 
-    e_MON_RESPONSE_CHECKPOINT_INFO = 0x10,
-    e_MON_RESPONSE_CHECKPOINT_DELETE = 0x12,
-    e_MON_RESPONSE_CHECKPOINT_LIST = 0x13,
+    e_MON_RESPONSE_CHECKPOINT_INFO = 0x11,
 
-    e_MON_RESPONSE_COND_INFO = 0x20,
+    e_MON_RESPONSE_CHECKPOINT_DELETE = 0x13,
+    e_MON_RESPONSE_CHECKPOINT_LIST = 0x14,
 
-    e_MON_RESPONSE_REGISTER_INFO = 0x30,
+    e_MON_RESPONSE_COND_INFO = 0x21,
 
-    e_MON_RESPONSE_EXIT = 0x70,
-    e_MON_RESPONSE_QUIT = 0x71,
-    e_MON_RESPONSE_ADVANCE_INSTRUCTIONS = 0x72,
+    e_MON_RESPONSE_REGISTER_INFO = 0x31,
 
-    e_MON_RESPONSE_PING = 0x80,
-    e_MON_RESPONSE_JAM = 0x81,
-    e_MON_RESPONSE_STOPPED = 0x82,
-    e_MON_RESPONSE_RESUMED = 0x83,
+    e_MON_RESPONSE_EXIT = 0x71,
+    e_MON_RESPONSE_QUIT = 0x72,
+    e_MON_RESPONSE_ADVANCE_INSTRUCTIONS = 0x73,
+
+    e_MON_RESPONSE_PING = 0x81,
+    e_MON_RESPONSE_BANK_INFO = 0x82,
+
+    e_MON_RESPONSE_JAM = 0x83,
+    e_MON_RESPONSE_STOPPED = 0x84,
+    e_MON_RESPONSE_RESUMED = 0x85,
 };
 typedef enum t_binary_response BINARY_RESPONSE;
 
@@ -237,7 +239,7 @@ COMMANDS (command body: bytes 8+, response body: bytes 12+)
 ======================
 
 ----------------------
-0x01: MON_CMD_MEMDUMP
+0x01: MON_CMD_MEM_GET
 ----------------------
 
 Dumps a chunk of memory from a start address to an end address (inclusive).
@@ -260,7 +262,7 @@ byte 5: bank ID
 
 Response type:
 
-0x01: MON_RESPONSE_MEMDUMP
+0x01: MON_RESPONSE_MEM_GET
 
 Response body:
 
@@ -268,30 +270,7 @@ byte 0-1: The length of the memory segment.
 byte 2+: The memory at the address.
 
 ----------------------
-0x02: MON_CMD_BANKS_GET
-----------------------
-
-Gives a listing of all the bank IDs for the running machine with their names.
-
-Command body:
-
-Currently empty.
-
-Response type:
-
-0x02: MON_RESPONSE_BANK_INFO
-
-Response body:
-
-byte 0-1: The count of the array items
-byte 2+: An array with items of structure:
-    byte 0: Size of the item, excluding this byte
-    byte 1-2: ID of the bank
-    byte 3: Length of name
-    byte 4+: Name
-
-----------------------
-0x11: MON_CMD_CHECKPOINT_SET
+0x12: MON_CMD_CHECKPOINT_SET
 ----------------------
 
 Sets any type of checkpoint. This combines the functionality of several
@@ -319,14 +298,14 @@ byte 7: temporary
 
 Response type:
 
-0x02: MON_RESPONSE_CHECKPOINT_INFO
+0x11: MON_RESPONSE_CHECKPOINT_INFO
 
 Response body:
 
 See the section CHECKPOINT RESPONSE
 
 ----------------------
-0x11: MON_CMD_CHECKPOINT_LIST
+0x14: MON_CMD_CHECKPOINT_LIST
 ----------------------
 
 Response type:
@@ -334,7 +313,7 @@ Response type:
 Emits a series of MON_RESPONSE_CHECKPOINT_INFO responses
 (See the section CHECKPOINT RESPONSE) followed by
 
-0x13: MON_RESPONSE_CHECKPOINT_LIST
+0x14: MON_RESPONSE_CHECKPOINT_LIST
 
 Response body:
 
@@ -343,7 +322,7 @@ MON_RESPONSE_CHECKPOINT_LIST:
 byte 0-3: The total number of checkpoints
 
 -----------------------------------
-0x05: MON_CMD_COND_SET
+0x21: MON_CMD_COND_SET
 -----------------------------------
 
 Sets a condition on an existing checkpoint.
@@ -357,14 +336,14 @@ byte 5+: condition expression string
 
 Response type:
 
-0x04: MON_RESPONSE_COND_INFO
+0x21: MON_RESPONSE_COND_INFO
 
 Response body:
 
 Currently empty.
 
 -----------------------------------
-0x30: MON_CMD_REGISTERS_GET
+0x31: MON_CMD_REGISTERS_GET
 -----------------------------------
 
 Get details about the registers
@@ -375,14 +354,14 @@ Currently empty.
 
 Response type:
 
-0x30: MON_RESPONSE_REGISTER_INFO
+0x31: MON_RESPONSE_REGISTER_INFO
 
 Response body:
 
 See the section REGISTERS RESPONSE
 
 -----------------------------------
-0x31: MON_CMD_REGISTERS_SET
+0x32: MON_CMD_REGISTERS_SET
 -----------------------------------
 
 Set the register values
@@ -397,14 +376,14 @@ byte 2+: An array with items of structure:
 
 Response type:
 
-0x30: MON_RESPONSE_REGISTER_INFO
+0x31: MON_RESPONSE_REGISTER_INFO
 
 Response body:
 
 See the section REGISTERS RESPONSE
 
 -----------------------------------
-0x70: MON_CMD_EXIT
+0x71: MON_CMD_EXIT
 -----------------------------------
 
 Exit the monitor until the next breakpoint.
@@ -415,14 +394,14 @@ Currently empty.
 
 Response type:
 
-0x70: MON_RESPONSE_EXIT
+0x71: MON_RESPONSE_EXIT
 
 Response body:
 
 Currently empty.
 
 -----------------------------------
-0x71: MON_CMD_QUIT
+0x72: MON_CMD_QUIT
 -----------------------------------
 
 Quits VICE.
@@ -433,14 +412,14 @@ Currently empty.
 
 Response type:
 
-0x71: MON_RESPONSE_QUIT
+0x72: MON_RESPONSE_QUIT
 
 Response body:
 
 Currently empty.
 
 -----------------------------------
-0x72: MON_CMD_ADVANCE_INSTRUCTIONS
+0x73: MON_CMD_ADVANCE_INSTRUCTIONS
 -----------------------------------
 
 Step over a certain number of instructions.
@@ -453,14 +432,14 @@ byte 1-2: How many instructions to step over.
 
 Response type:
 
-0x72: MON_RESPONSE_ADVANCE_INSTRUCTIONS
+0x73: MON_RESPONSE_ADVANCE_INSTRUCTIONS
 
 Response body:
 
 Currently empty.
 
 -------------------
-0x80: MON_CMD_PING
+0x81: MON_CMD_PING
 -------------------
 
 Get an empty response
@@ -471,18 +450,41 @@ Always empty
 
 Response type:
 
-0x80: MON_RESPONSE_PING
+0x81: MON_RESPONSE_PING
 
 Response body:
 
 Always empty
+
+----------------------
+0x82: MON_CMD_BANKS_GET
+----------------------
+
+Gives a listing of all the bank IDs for the running machine with their names.
+
+Command body:
+
+Currently empty.
+
+Response type:
+
+0x82: MON_RESPONSE_BANK_INFO
+
+Response body:
+
+byte 0-1: The count of the array items
+byte 2+: An array with items of structure:
+    byte 0: Size of the item, excluding this byte
+    byte 1-2: ID of the bank
+    byte 3: Length of name
+    byte 4+: Name
 
 REGISTERS RESPONSE
 =====================
 
 Response type:
 
-0x06: MON_RESPONSE_REGISTER_INFO
+0x31: MON_RESPONSE_REGISTER_INFO
 
 Response body:
 
@@ -498,7 +500,7 @@ CHECKPOINT RESPONSE
 
 Response type:
 
-0x02: MON_RESPONSE_CHECKPOINT_INFO
+0x11: MON_RESPONSE_CHECKPOINT_INFO
 
 Response body:
 
@@ -532,9 +534,11 @@ byte 21: Has condition?
 JAM RESPONSE
 ===============
 
+Emitted when the CPU jams
+
 Response type:
 
-0x81: MON_RESPONSE_JAM
+0x83: MON_RESPONSE_JAM
 
 Response body:
 
@@ -548,7 +552,7 @@ either due to hitting a checkpoint or stepping.
 
 Response type:
 
-0x82: MON_RESPONSE_STOPPED
+0x84: MON_RESPONSE_STOPPED
 
 Response body:
 
@@ -561,7 +565,7 @@ When the machine resumes execution for any reason.
 
 Response type:
 
-0x83: MON_RESPONSE_RESUMED
+0x85: MON_RESPONSE_RESUMED
 
 Response body:
 
