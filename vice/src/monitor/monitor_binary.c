@@ -77,7 +77,8 @@ enum t_binary_command {
     e_MON_CMD_ADVANCE_INSTRUCTIONS = 0x73,
 
     e_MON_CMD_PING = 0x81,
-    e_MON_CMD_BANKS_GET = 0x82,
+    e_MON_CMD_BANKS_AVAILABLE = 0x82,
+    e_MON_CMD_REGISTERS_AVAILABLE = 0x83,
 };
 typedef enum t_binary_command BINARY_COMMAND;
 
@@ -93,16 +94,17 @@ enum t_binary_response {
 
     e_MON_RESPONSE_REGISTER_INFO = 0x31,
 
+    e_MON_RESPONSE_JAM = 0x61,
+    e_MON_RESPONSE_STOPPED = 0x62,
+    e_MON_RESPONSE_RESUMED = 0x63,
+
     e_MON_RESPONSE_EXIT = 0x71,
     e_MON_RESPONSE_QUIT = 0x72,
     e_MON_RESPONSE_ADVANCE_INSTRUCTIONS = 0x73,
 
     e_MON_RESPONSE_PING = 0x81,
-    e_MON_RESPONSE_BANK_INFO = 0x82,
-
-    e_MON_RESPONSE_JAM = 0x83,
-    e_MON_RESPONSE_STOPPED = 0x84,
-    e_MON_RESPONSE_RESUMED = 0x85,
+    e_MON_RESPONSE_BANKS_AVAILABLE = 0x82,
+    e_MON_RESPONSE_REGISTERS_AVAILABLE = 0x83,
 };
 typedef enum t_binary_response BINARY_RESPONSE;
 
@@ -257,7 +259,7 @@ byte 4: memspace
     0x04: drive 11
 byte 5: bank ID
     Describes which bank you want. This is dependent on your
-    machine. Please look at the command MON_CMD_BANKS_GET for details.
+    machine. Please look at the command MON_CMD_BANKS_AVAILABLE for details.
     If the memspace selected doesn't support banks, this byte is ignored.
 
 Response type:
@@ -457,7 +459,7 @@ Response body:
 Always empty
 
 ----------------------
-0x82: MON_CMD_BANKS_GET
+0x82: MON_CMD_BANKS_AVAILABLE
 ----------------------
 
 Gives a listing of all the bank IDs for the running machine with their names.
@@ -468,7 +470,7 @@ Currently empty.
 
 Response type:
 
-0x82: MON_RESPONSE_BANK_INFO
+0x82: MON_RESPONSE_BANKS_AVAILABLE
 
 Response body:
 
@@ -476,6 +478,30 @@ byte 0-1: The count of the array items
 byte 2+: An array with items of structure:
     byte 0: Size of the item, excluding this byte
     byte 1-2: ID of the bank
+    byte 3: Length of name
+    byte 4+: Name
+
+----------------------
+0x83: MON_CMD_REGISTERS_AVAILABLE
+----------------------
+
+Gives a listing of all the registers for the running machine with their names.
+
+Command body:
+
+Currently empty.
+
+Response type:
+
+0x82: MON_RESPONSE_REGISTERS_AVAILABLE
+
+Response body:
+
+byte 0-1: The count of the array items
+byte 2+: An array with items of structure:
+    byte 0: Size of the item, excluding this byte
+    byte 1: ID of the register
+    byte 2: Size of the register in bits
     byte 3: Length of name
     byte 4+: Name
 
@@ -492,8 +518,7 @@ byte 0-1: The count of the array items
 byte 2+: An array with items of structure:
     byte 0: Size of the item, excluding this byte
     byte 1: ID of the register
-    byte 2: register size in bits
-    byte 3-4: register value
+    byte 2-3: register value
 
 CHECKPOINT RESPONSE
 =====================
@@ -538,7 +563,7 @@ Emitted when the CPU jams
 
 Response type:
 
-0x83: MON_RESPONSE_JAM
+0x61: MON_RESPONSE_JAM
 
 Response body:
 
@@ -552,7 +577,7 @@ either due to hitting a checkpoint or stepping.
 
 Response type:
 
-0x84: MON_RESPONSE_STOPPED
+0x62: MON_RESPONSE_STOPPED
 
 Response body:
 
@@ -565,7 +590,7 @@ When the machine resumes execution for any reason.
 
 Response type:
 
-0x85: MON_RESPONSE_RESUMED
+0x63: MON_RESPONSE_RESUMED
 
 Response body:
 
@@ -690,9 +715,6 @@ void monitor_binary_response_register_info(uint32_t request_id) {
         ++response_cursor;
 
         *response_cursor = regs_cursor->id;
-        ++response_cursor;
-
-        *response_cursor = regs_cursor->size;
         ++response_cursor;
 
         response_cursor = write_uint16((uint16_t)regs_cursor->val, response_cursor);
@@ -839,7 +861,7 @@ static int monitor_binary_process_quit(binary_command_t *command) {
     return 0;
 }
 
-static int monitor_binary_process_banks_get(binary_command_t *command) {
+static int monitor_binary_process_banks_available(binary_command_t *command) {
     unsigned char *response;
     unsigned char *response_cursor;
     const int *banknums;
@@ -850,7 +872,7 @@ static int monitor_binary_process_banks_get(binary_command_t *command) {
     unsigned int i = 0;
     uint32_t response_size = 2;
 
-    if(
+    if (
         !mon_interfaces[e_comp_space]->mem_bank_list
         || !mon_interfaces[e_comp_space]->mem_bank_list_nos
         ) {
@@ -862,7 +884,7 @@ static int monitor_binary_process_banks_get(binary_command_t *command) {
     banknums = mon_interfaces[e_comp_space]->mem_bank_list_nos();
     banknames = mon_interfaces[e_comp_space]->mem_bank_list();
 
-    while(banknames[i]) {
+    while (banknames[i]) {
         ++i;
     }
 
@@ -870,7 +892,7 @@ static int monitor_binary_process_banks_get(binary_command_t *command) {
 
     item_sizes = lib_malloc(sizeof(size_t) * count);
 
-    for(i = 0; i < count; i++) {
+    for (i = 0; i < count; i++) {
         item_sizes[i] = strlen(banknames[i]) + 3;
         response_size += item_sizes[i] + 1;
     }
@@ -880,7 +902,7 @@ static int monitor_binary_process_banks_get(binary_command_t *command) {
 
     response_cursor = write_uint16(count, response_cursor);
 
-    for(i = 0; i < count; i++) {
+    for (i = 0; i < count; i++) {
         size_t item_size = item_sizes[i];
         *response_cursor = item_size;
         ++response_cursor;
@@ -890,7 +912,58 @@ static int monitor_binary_process_banks_get(binary_command_t *command) {
         response_cursor = write_string(item_size - 3, (unsigned char *)banknames[i], response_cursor);
     }
 
-    monitor_binary_response(response_size, e_MON_RESPONSE_BANK_INFO, MON_ERR_OK, command->request_id, response);
+    monitor_binary_response(response_size, e_MON_RESPONSE_BANKS_AVAILABLE, MON_ERR_OK, command->request_id, response);
+
+    lib_free(response);
+    lib_free(item_sizes);
+
+    return 1;
+}
+
+static int monitor_binary_process_registers_available(binary_command_t *command) {
+    unsigned char *response;
+    unsigned char *response_cursor;
+    size_t *item_sizes;
+    uint16_t count;
+    unsigned int i = 0;
+    uint32_t response_size = 2;
+    mon_reg_list_t *regs = mon_register_list_get(e_comp_space);
+
+    while (regs[i].name) {
+        ++i;
+    }
+
+    count = i;
+
+    item_sizes = lib_malloc(sizeof(size_t) * count);
+
+    for (i = 0; i < count; i++) {
+        item_sizes[i] = strlen(regs[i].name) + 3;
+        response_size += item_sizes[i] + 1;
+    }
+
+    response = lib_malloc(response_size);
+    response_cursor = response;
+
+    i = 0;
+
+    response_cursor = write_uint16(count, response_cursor);
+
+    for (i = 0; i < count; i++) {
+        size_t item_size = item_sizes[i];
+        *response_cursor = item_size;
+        ++response_cursor;
+
+        *response_cursor = regs[i].id;
+        ++response_cursor;
+
+        *response_cursor = regs[i].size;
+        ++response_cursor;
+
+        response_cursor = write_string(item_size - 3, (unsigned char *)regs[i].name, response_cursor);
+    }
+
+    monitor_binary_response(response_size, e_MON_RESPONSE_REGISTERS_AVAILABLE, MON_ERR_OK, command->request_id, response);
 
     lib_free(response);
     lib_free(item_sizes);
@@ -966,7 +1039,7 @@ static int monitor_binary_process_memdump(binary_command_t *command) {
         ++response_cursor;
     }
 
-    monitor_binary_response(response_size, e_MON_RESPONSE_MEMDUMP, MON_ERR_OK, command->request_id, response);
+    monitor_binary_response(response_size, e_MON_RESPONSE_MEM_GET, MON_ERR_OK, command->request_id, response);
 
     lib_free(response);
 
@@ -996,16 +1069,18 @@ static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_si
     command_type = command->type;
     if (command_type == e_MON_CMD_PING) {
         cont = monitor_binary_process_ping(command);
-    } else if(command_type == e_MON_CMD_MEMDUMP) {
+    } else if(command_type == e_MON_CMD_MEM_GET) {
         cont = monitor_binary_process_memdump(command);
-    } else if(command_type == e_MON_CMD_BANKS_GET) {
-        cont = monitor_binary_process_banks_get(command);
     } else if(command_type == e_MON_CMD_CHECKPOINT_SET) {
         cont = monitor_binary_process_checkpoint_set(command);
     } else if(command_type == e_MON_CMD_CHECKPOINT_LIST) {
         cont = monitor_binary_process_checkpoint_list(command);
     } else if(command_type == e_MON_CMD_REGISTERS_GET) {
         cont = monitor_binary_process_registers_get(command);
+    } else if(command_type == e_MON_CMD_BANKS_AVAILABLE) {
+        cont = monitor_binary_process_banks_available(command);
+    } else if(command_type == e_MON_CMD_REGISTERS_AVAILABLE) {
+        cont = monitor_binary_process_registers_available(command);
     } else if(command_type == e_MON_CMD_EXIT) {
         cont = monitor_binary_process_exit(command);
     } else if(command_type == e_MON_CMD_QUIT) {
