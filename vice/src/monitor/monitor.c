@@ -2465,6 +2465,9 @@ static void monitor_open(void)
         int mem = monitor_diskspace_mem(dnr);
         dot_addr[mem] = new_addr(mem, ((uint16_t)((monitor_cpu_for_memspace[mem]->mon_register_get_val)(mem, e_PC))));
     }
+
+    mon_event_opened();
+
     /* disassemble at monitor entry, for single stepping */
     if (disassemble_on_entry) {
         int monbank = mon_interfaces[default_memspace]->current_bank;

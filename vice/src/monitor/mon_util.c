@@ -142,6 +142,14 @@ static void mon_buffer_add(const char *buffer, unsigned int bufferlen)
     }
 }
 
+void mon_event_opened(void) {
+    #ifdef HAVE_NETWORK
+        if (monitor_is_binary()) {
+            monitor_binary_response_register_info(0xffffffff);
+        }
+    #endif
+}
+
 static int mon_out_buffered(const char *buffer)
 {
     int rv = 0;

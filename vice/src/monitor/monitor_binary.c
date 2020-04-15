@@ -599,7 +599,7 @@ static void monitor_binary_response(uint32_t length, uint8_t response_type, uint
     }
 }
 
-static void monitor_binary_response_register_info(uint32_t request_id) {
+void monitor_binary_response_register_info(uint32_t request_id) {
     unsigned char *response;
     uint16_t count;
     uint32_t response_size = 2;
@@ -612,7 +612,7 @@ static void monitor_binary_response_register_info(uint32_t request_id) {
         ++regs_cursor;
     } while(regs_cursor->name);
 
-    count = (regs_cursor - regs) / sizeof(mon_reg_list_t);
+    count = regs_cursor - regs;
 
     response_size += count * (item_size + 1);
     response = lib_malloc(response_size);
@@ -741,6 +741,7 @@ static int monitor_binary_process_advance_instructions(binary_command_t *command
         mon_instructions_step(count);
     }
 
+    // TODO: This is useless if you can't detect when the monitor reenters
     monitor_binary_response(0, e_MON_RESPONSE_ADVANCE_INSTRUCTIONS, MON_ERR_OK, command->request_id, NULL);
 
     return 0;
