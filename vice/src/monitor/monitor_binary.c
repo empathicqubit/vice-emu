@@ -59,6 +59,8 @@ static char *monitor_binary_server_address = NULL;
 static int monitor_binary_enabled = 0;
 
 enum t_binary_command {
+    e_MON_CMD_INVALID = 0x00,
+
     e_MON_CMD_MEM_GET = 0x01,
     e_MON_CMD_MEM_SET = 0x02,
 
@@ -872,13 +874,52 @@ static int monitor_binary_process_advance_instructions(binary_command_t *command
         mon_instructions_step(count);
     }
 
-    // TODO: This is useless if you can't detect when the monitor reenters
     monitor_binary_response(0, e_MON_RESPONSE_ADVANCE_INSTRUCTIONS, MON_ERR_OK, command->request_id, NULL);
 
     return 0;
 }
 
 static int monitor_binary_process_registers_get(binary_command_t *command) {
+    monitor_binary_response_register_info(command->request_id);
+
+    return 1;
+}
+
+static int monitor_binary_process_registers_set(binary_command_t *command) {
+    const int header_size = 2;
+    unsigned int i = 0;
+    unsigned char *body = command->body;
+    unsigned char *body_cursor = body;
+    uint16_t count = little_endian_to_uint16(body);
+
+    if (command->length < header_size + count * (3 + 1)) {
+        monitor_binary_error(MON_ERR_CMD_INVALID_LENGTH, command->request_id);
+        return 1;
+    }
+
+    body_cursor += header_size;
+
+    for (i = 0; i < count; i++) {
+        uint8_t item_size = body_cursor[0];
+        uint8_t reg_id = body_cursor[1];
+        uint16_t reg_val = little_endian_to_uint16(&body_cursor[2]);
+
+        if (item_size < 3) {
+            monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
+            return 1;
+        }
+
+        if (!mon_register_valid(e_comp_space, (int)reg_id)) {
+            monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
+            return 1;
+        }
+
+        // FIXME: memspace weirdness 6502/6510
+        monitor_cpu_for_memspace[e_comp_space]->mon_register_set_val(e_comp_space, reg_regid(reg_id), reg_val);
+
+        body_cursor += item_size + 1;
+    }
+
     monitor_binary_response_register_info(command->request_id);
 
     return 1;
@@ -1141,11 +1182,9 @@ static int monitor_binary_process_mem_set(binary_command_t *command) {
 
     banknum = requested_banknum;
 
-    body += header_size;
-
     sidefx = !!new_sidefx;
     for (i = 0; i < length; i++) {
-        mon_set_mem_val_ex(memspace, banknum, (uint16_t)ADDR_LIMIT(startaddress + i), body[i]);
+        mon_set_mem_val_ex(memspace, banknum, (uint16_t)ADDR_LIMIT(startaddress + i), body[header_size + i]);
     }
     sidefx = old_sidefx;
 
@@ -1155,9 +1194,9 @@ static int monitor_binary_process_mem_set(binary_command_t *command) {
 }
 
 static int monitor_binary_process_command(unsigned char * pbuffer) {
-    binary_command_t *command = lib_malloc(sizeof(binary_command_t));
     BINARY_COMMAND command_type;
-    int cont;
+    int cont = 1;
+    binary_command_t *command = lib_malloc(sizeof(binary_command_t));
 
     command->api_version = (uint8_t)pbuffer[1];
 
@@ -1177,26 +1216,33 @@ static int monitor_binary_process_command(unsigned char * pbuffer) {
     command_type = command->type;
     if (command_type == e_MON_CMD_PING) {
         cont = monitor_binary_process_ping(command);
-    } else if(command_type == e_MON_CMD_MEM_GET) {
+
+    } else if (command_type == e_MON_CMD_MEM_GET) {
         cont = monitor_binary_process_mem_get(command);
-    } else if(command_type == e_MON_CMD_MEM_SET) {
+    } else if (command_type == e_MON_CMD_MEM_SET) {
         cont = monitor_binary_process_mem_set(command);
-    } else if(command_type == e_MON_CMD_CHECKPOINT_SET) {
+
+    } else if (command_type == e_MON_CMD_CHECKPOINT_SET) {
         cont = monitor_binary_process_checkpoint_set(command);
-    } else if(command_type == e_MON_CMD_CHECKPOINT_LIST) {
+    } else if (command_type == e_MON_CMD_CHECKPOINT_LIST) {
         cont = monitor_binary_process_checkpoint_list(command);
-    } else if(command_type == e_MON_CMD_REGISTERS_GET) {
+
+    } else if (command_type == e_MON_CMD_REGISTERS_GET) {
         cont = monitor_binary_process_registers_get(command);
-    } else if(command_type == e_MON_CMD_BANKS_AVAILABLE) {
-        cont = monitor_binary_process_banks_available(command);
-    } else if(command_type == e_MON_CMD_REGISTERS_AVAILABLE) {
-        cont = monitor_binary_process_registers_available(command);
-    } else if(command_type == e_MON_CMD_EXIT) {
+    } else if (command_type == e_MON_CMD_REGISTERS_SET) {
+        cont = monitor_binary_process_registers_set(command);
+
+    } else if (command_type == e_MON_CMD_EXIT) {
         cont = monitor_binary_process_exit(command);
-    } else if(command_type == e_MON_CMD_QUIT) {
+    } else if (command_type == e_MON_CMD_QUIT) {
         cont = monitor_binary_process_quit(command);
-    } else if(command_type == e_MON_CMD_ADVANCE_INSTRUCTIONS) {
+    } else if (command_type == e_MON_CMD_ADVANCE_INSTRUCTIONS) {
         cont = monitor_binary_process_advance_instructions(command);
+
+    } else if (command_type == e_MON_CMD_BANKS_AVAILABLE) {
+        cont = monitor_binary_process_banks_available(command);
+    } else if (command_type == e_MON_CMD_REGISTERS_AVAILABLE) {
+        cont = monitor_binary_process_registers_available(command);
     } else {
         log_message(LOG_DEFAULT,
                 "monitor_network binary command: unknown command %d, "
@@ -1295,7 +1341,7 @@ int monitor_binary_get_command_line(void)
 
         n = 0;
 
-        while(n < remaining_header_size + body_length) {
+        while (n < remaining_header_size + body_length) {
             int o = monitor_binary_receive(&buffer[6], remaining_header_size + body_length - n);
             if(o <= 0) {
                 monitor_binary_quit();
@@ -1307,7 +1353,7 @@ int monitor_binary_get_command_line(void)
 
         ui_dispatch_events();
 
-        if(!monitor_binary_process_command(buffer)) {
+        if (!monitor_binary_process_command(buffer)) {
             return 0;
         }
     }
@@ -1332,7 +1378,7 @@ static int monitor_binary_deactivate(void)
 /*! \internal \brief set the binary monitor to the enabled or disabled state
 
  \param val
-   if 0, disable the network monitor; else, enable it.
+   if 0, disable the binary monitor; else, enable it.
 
  \param param
    unused
