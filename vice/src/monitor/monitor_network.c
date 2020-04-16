@@ -31,8 +31,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "ui.h"
-
 #include "cmdline.h"
 #include "lib.h"
 #include "log.h"
@@ -327,7 +325,6 @@ int monitor_network_get_command_line(char **prompt)
     static int bufferpos = 0;
 
     if(!monitor_network_data_available()) {
-        ui_dispatch_events();
         return 1;
     }
 
@@ -375,8 +372,6 @@ int monitor_network_get_command_line(char **prompt)
                 bufferpos = 0;
             }
         }
-
-        ui_dispatch_events();
     } while (1);
 
     return 1;

@@ -31,8 +31,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "ui.h"
-
 #include "cmdline.h"
 #include "lib.h"
 #include "log.h"
@@ -113,11 +111,11 @@ enum t_binary_response {
 typedef enum t_binary_response BINARY_RESPONSE;
 
 struct binary_command_s {
-    uint8_t api_version;
+    unsigned char *body;
     uint32_t length;
     uint32_t request_id;
+    uint8_t api_version;
     BINARY_COMMAND type;
-    unsigned char *body;
 };
 typedef struct binary_command_s binary_command_t;
 
@@ -1244,6 +1242,7 @@ static int monitor_binary_process_command(unsigned char * pbuffer) {
     } else if (command_type == e_MON_CMD_REGISTERS_AVAILABLE) {
         cont = monitor_binary_process_registers_available(command);
     } else {
+        monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
         log_message(LOG_DEFAULT,
                 "monitor_network binary command: unknown command %d, "
                 "skipping command length of %u",
@@ -1351,14 +1350,10 @@ int monitor_binary_get_command_line(void)
             n += o;
         }
 
-        ui_dispatch_events();
-
         if (!monitor_binary_process_command(buffer)) {
             return 0;
         }
     }
-
-    ui_dispatch_events();
 
     return 1;
 }

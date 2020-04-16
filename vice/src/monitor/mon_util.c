@@ -32,6 +32,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "ui.h"
+
 #include "archdep.h"
 #include "console.h"
 #include "lib.h"
@@ -43,7 +45,7 @@
 #include "monitor_binary.h"
 #include "types.h"
 #include "uimon.h"
-
+#include "vsyncapi.h"
 
 static char *bigbuffer = NULL;
 static const unsigned int bigbuffersize = 10000;
@@ -293,6 +295,9 @@ char *uimon_in(const char *prompt)
         }
 
         if (monitor_is_remote() || monitor_is_binary()) {
+            // FIXME: This is lazy and introduces an unnecessary delay.
+            vsyncarch_sleep(100);
+
             if (monitor_is_binary()) {
                 if (!monitor_binary_get_command_line()) {
                     exit_mon = 1;
@@ -307,6 +312,8 @@ char *uimon_in(const char *prompt)
                     break;
                 }
             }
+
+            ui_dispatch_events();
         } else {
 #endif
             /* make sure to flush the output buffer */
