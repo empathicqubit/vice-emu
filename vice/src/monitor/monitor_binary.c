@@ -60,6 +60,7 @@ static int monitor_binary_enabled = 0;
 
 enum t_binary_command {
     e_MON_CMD_MEM_GET = 0x01,
+    e_MON_CMD_MEM_SET = 0x02,
 
     e_MON_CMD_CHECKPOINT_GET = 0x11,
     e_MON_CMD_CHECKPOINT_SET = 0x12,
@@ -84,6 +85,7 @@ typedef enum t_binary_command BINARY_COMMAND;
 
 enum t_binary_response {
     e_MON_RESPONSE_MEM_GET = 0x01,
+    e_MON_RESPONSE_MEM_SET = 0x02,
 
     e_MON_RESPONSE_CHECKPOINT_INFO = 0x11,
 
@@ -110,7 +112,7 @@ typedef enum t_binary_response BINARY_RESPONSE;
 
 struct binary_command_s {
     uint8_t api_version;
-    uint8_t length;
+    uint32_t length;
     uint32_t request_id;
     BINARY_COMMAND type;
     unsigned char *body;
@@ -205,16 +207,16 @@ COMMAND STRUCTURE
 
 byte 0: 0x02 (STX)
 byte 1: API version ID (currently 0x01)
-byte 2: length
-    Note that the command length byte (the one after STX) does *not* count the
-    STX, the command length, the command byte, or the request ID. Basically
-    nothing in the header, just the body.
-byte 3-6: request id
+byte 2-5: length
+    Note that the command length does *not* count the STX, the command length, 
+    the command byte, or the request ID. Basically nothing in the header, 
+    just the body.
+byte 6-9: request id
     In little endian order. All multibyte values are in little endian order,
     unless otherwise specified. There is no requirement for this to be unique,
     but it makes it easier to match up the responses if you do.
-byte 7: The numeric command type. See the COMMANDS section for more details.
-byte 8+: The command body. See the COMMANDS section.
+byte 10: The numeric command type. See the COMMANDS section for more details.
+byte 11+: The command body. See the COMMANDS section.
 
 RESPONSE STRUCTURE
 ===============================
@@ -237,30 +239,32 @@ byte 8-11: request ID
     such as hitting a checkpoint.
 byte 12+: response body. See the COMMANDS section for more details.
 
-COMMANDS (command body: bytes 8+, response body: bytes 12+)
+COMMANDS (command body: bytes 11+, response body: bytes 12+)
 ======================
 
 ----------------------
 0x01: MON_CMD_MEM_GET
 ----------------------
 
-Dumps a chunk of memory from a start address to an end address (inclusive).
+Reads a chunk of memory from a start address to an end address (inclusive).
 
 Command body:
 
-byte 0-1: start address
-byte 2-3: end address
-byte 4: memspace
+byte 0: side effects?
+    Should the read cause side effects?
+byte 1-2: start address
+byte 3-4: end address
+byte 5: memspace
     Describes which part of the computer you want to read:
     0x00: the computer (C64)
     0x01: drive 8
     0x02: drive 9
     0x03: drive 10
     0x04: drive 11
-byte 5: bank ID
+byte 6-7: bank ID
     Describes which bank you want. This is dependent on your
     machine. Please look at the command MON_CMD_BANKS_AVAILABLE for details.
-    If the memspace selected doesn't support banks, this byte is ignored.
+    If the memspace selected doesn't support banks, this value is ignored.
 
 Response type:
 
@@ -270,6 +274,39 @@ Response body:
 
 byte 0-1: The length of the memory segment.
 byte 2+: The memory at the address.
+
+----------------------
+0x02: MON_CMD_MEM_SET
+----------------------
+
+Writes a chunk of memory from a start address to an end address (inclusive).
+
+Command body:
+
+byte 0: side effects?
+    Should the write cause side effects?
+byte 1-2: start address
+byte 3-4: end address
+byte 5: memspace
+    Describes which part of the computer you want to read:
+    0x00: the computer (C64)
+    0x01: drive 8
+    0x02: drive 9
+    0x03: drive 10
+    0x04: drive 11
+byte 6-7: bank ID
+    Describes which bank you want. This is dependent on your
+    machine. Please look at the command MON_CMD_BANKS_AVAILABLE for details.
+    If the memspace selected doesn't support banks, this byte is ignored.
+byte 8+: Memory contents to write
+
+Response type:
+
+0x02: MON_RESPONSE_MEM_SET
+
+Response body:
+
+Currently empty.
 
 ----------------------
 0x12: MON_CMD_CHECKPOINT_SET
@@ -661,7 +698,7 @@ static void monitor_binary_response_stopped(uint32_t request_id) {
     unsigned char response[2];
     uint16_t addr = ((uint16_t)((monitor_cpu_for_memspace[e_comp_space]->mon_register_get_val)(e_comp_space, e_PC)));
 
-    write_uint16(addr, &response);
+    write_uint16(addr, response);
 
     monitor_binary_response(2, e_MON_RESPONSE_STOPPED, MON_ERR_OK, MON_EVENT_ID, response);
 }
@@ -670,7 +707,7 @@ static void monitor_binary_response_resumed(uint32_t request_id) {
     unsigned char response[2];
     uint16_t addr = ((uint16_t)((monitor_cpu_for_memspace[e_comp_space]->mon_register_get_val)(e_comp_space, e_PC)));
 
-    write_uint16(addr, &response);
+    write_uint16(addr, response);
 
     monitor_binary_response(2, e_MON_RESPONSE_RESUMED, MON_ERR_OK, MON_EVENT_ID, response);
 }
@@ -680,7 +717,7 @@ ui_jam_action_t monitor_binary_ui_jam_dialog(const char *format, ...)
     unsigned char response[2];
     uint16_t addr = ((uint16_t)((monitor_cpu_for_memspace[e_comp_space]->mon_register_get_val)(e_comp_space, e_PC)));
 
-    write_uint16(addr, &response);
+    write_uint16(addr, response);
 
     monitor_binary_response(0, e_MON_RESPONSE_JAM, MON_ERR_OK, MON_EVENT_ID, response);
 
@@ -691,7 +728,7 @@ void monitor_binary_response_register_info(uint32_t request_id) {
     unsigned char *response;
     uint16_t count;
     uint32_t response_size = 2;
-    uint8_t item_size = 4;
+    uint8_t item_size = 3;
     mon_reg_list_t *regs = mon_register_list_get(e_comp_space);
     mon_reg_list_t *regs_cursor = regs;
     unsigned char *response_cursor;
@@ -744,7 +781,7 @@ void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_checkpoint
         | (checkpt->check_exec ? e_exec : 0)
     );
 
-    write_uint32(checkpt->checknum, &response[0]);
+    write_uint32(checkpt->checknum, response);
     response[4] = hit;
 
     write_uint16((uint16_t)addr_location(checkpt->start_addr), &response[5]);
@@ -782,7 +819,7 @@ static int monitor_binary_process_checkpoint_list(binary_command_t *command) {
         monitor_binary_response_checkpoint_info(request_id, checkpts[i], 0);
     }
 
-    write_uint32((uint32_t)len, &response[0]);
+    write_uint32((uint32_t)len, response);
 
     monitor_binary_response(sizeof(uint32_t), e_MON_RESPONSE_CHECKPOINT_LIST, MON_ERR_OK, request_id, response);
 
@@ -971,31 +1008,39 @@ static int monitor_binary_process_registers_available(binary_command_t *command)
     return 1;
 }
 
-static int monitor_binary_process_memdump(binary_command_t *command) {
-    unsigned int i;
+static int monitor_binary_process_mem_get(binary_command_t *command) {
     unsigned char *response;
     unsigned char *response_cursor;
 
     uint32_t response_size = 2;
     int banknum = 0;
+    int old_sidefx = sidefx;
     MEMSPACE memspace = e_default_space;
 
     unsigned char *body = command->body;
 
-    uint16_t startaddress = little_endian_to_uint16(&body[0]);
-    uint16_t endaddress = little_endian_to_uint16(&body[2]);
+    uint8_t new_sidefx = body[0];
 
-    uint8_t requested_memspace = body[4];
-    uint8_t requested_banknum = body[5];
+    uint16_t startaddress = little_endian_to_uint16(&body[1]);
+    uint16_t endaddress = little_endian_to_uint16(&body[3]);
+
+    uint8_t requested_memspace = body[5];
+    uint16_t requested_banknum = little_endian_to_uint16(&body[6]);
 
     uint16_t length = endaddress - startaddress + 1;
 
-    if(command->length < 5) {
+    if (startaddress > endaddress) {
+        monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
+        log_message(LOG_DEFAULT, "monitor binary memget: wrong start and/or end address %04x - %04x",
+                    startaddress, endaddress);
+        return 1;
+    }
+
+    if (command->length < 8) {
         monitor_binary_error(MON_ERR_CMD_INVALID_LENGTH, command->request_id);
         return 1;
     }
 
-    // TODO: Other systems?
     if (requested_memspace == 0) {
         memspace = e_comp_space;
     } else if (requested_memspace == 1) {
@@ -1008,24 +1053,17 @@ static int monitor_binary_process_memdump(binary_command_t *command) {
         memspace = e_disk11_space;
     } else {
         monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
-        log_message(LOG_DEFAULT, "monitor binary memdump: Unknown memspace %u", requested_memspace);
+        log_message(LOG_DEFAULT, "monitor binary memget: Unknown memspace %u", requested_memspace);
         return 1;
     }
 
     if (mon_banknum_validate(memspace, requested_banknum) == 0) {
         monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
-        log_message(LOG_DEFAULT, "monitor binary memdump: Unknown bank %u", requested_banknum);
+        log_message(LOG_DEFAULT, "monitor binary memget: Unknown bank %u", requested_banknum);
         return 1;
     }
 
     banknum = requested_banknum;
-
-    if (startaddress > endaddress) {
-        monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
-        log_message(LOG_DEFAULT, "monitor binary memdump: wrong start and/or end address %04x - %04x",
-                    startaddress, endaddress);
-        return 1;
-    }
 
     response_size += length;
 
@@ -1034,10 +1072,11 @@ static int monitor_binary_process_memdump(binary_command_t *command) {
 
     response_cursor = write_uint16(length, response_cursor);
 
-    for (i = 0; i < length; i++) {
-        *response_cursor = mon_get_mem_val_ex(memspace, banknum, (uint16_t)ADDR_LIMIT(startaddress + i));
-        ++response_cursor;
-    }
+    sidefx = !!new_sidefx;
+    mon_get_mem_block_ex(memspace, banknum, startaddress, endaddress, response_cursor);
+    sidefx = old_sidefx;
+
+    response_cursor += length;
 
     monitor_binary_response(response_size, e_MON_RESPONSE_MEM_GET, MON_ERR_OK, command->request_id, response);
 
@@ -1046,7 +1085,76 @@ static int monitor_binary_process_memdump(binary_command_t *command) {
     return 1;
 }
 
-static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_size, int * pbuffer_pos) {
+static int monitor_binary_process_mem_set(binary_command_t *command) {
+    unsigned int i;
+
+    int banknum = 0;
+    const int header_size = 8;
+    int old_sidefx = sidefx;
+    MEMSPACE memspace = e_default_space;
+
+    unsigned char *body = command->body;
+
+    uint8_t new_sidefx = body[0];
+
+    uint16_t startaddress = little_endian_to_uint16(&body[1]);
+    uint16_t endaddress = little_endian_to_uint16(&body[3]);
+
+    uint8_t requested_memspace = body[5];
+    uint16_t requested_banknum = little_endian_to_uint16(&body[6]);
+
+    uint16_t length = endaddress - startaddress + 1;
+
+    if (startaddress > endaddress) {
+        monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
+        log_message(LOG_DEFAULT, "monitor binary memset: wrong start and/or end address %04x - %04x",
+                    startaddress, endaddress);
+        return 1;
+    }
+
+    if (command->length < length + header_size) {
+        monitor_binary_error(MON_ERR_CMD_INVALID_LENGTH, command->request_id);
+        return 1;
+    }
+
+    if (requested_memspace == 0) {
+        memspace = e_comp_space;
+    } else if (requested_memspace == 1) {
+        memspace = e_disk8_space;
+    } else if (requested_memspace == 2) {
+        memspace = e_disk9_space;
+    } else if (requested_memspace == 3) {
+        memspace = e_disk10_space;
+    } else if (requested_memspace == 4) {
+        memspace = e_disk11_space;
+    } else {
+        monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
+        log_message(LOG_DEFAULT, "monitor binary memset: Unknown memspace %u", requested_memspace);
+        return 1;
+    }
+
+    if (mon_banknum_validate(memspace, requested_banknum) == 0) {
+        monitor_binary_error(MON_ERR_INVALID_PARAMETER, command->request_id);
+        log_message(LOG_DEFAULT, "monitor binary memset: Unknown bank %u", requested_banknum);
+        return 1;
+    }
+
+    banknum = requested_banknum;
+
+    body += header_size;
+
+    sidefx = !!new_sidefx;
+    for (i = 0; i < length; i++) {
+        mon_set_mem_val_ex(memspace, banknum, (uint16_t)ADDR_LIMIT(startaddress + i), body[i]);
+    }
+    sidefx = old_sidefx;
+
+    monitor_binary_response(0, e_MON_RESPONSE_MEM_SET, MON_ERR_OK, command->request_id, NULL);
+
+    return 1;
+}
+
+static int monitor_binary_process_command(unsigned char * pbuffer) {
     binary_command_t *command = lib_malloc(sizeof(binary_command_t));
     BINARY_COMMAND command_type;
     int cont;
@@ -1058,19 +1166,21 @@ static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_si
         return 1;
     }
 
-    command->length = (uint8_t)pbuffer[2];
+    command->length = little_endian_to_uint32(&pbuffer[2]);
 
     if (command->api_version >= 0x01) {
-        command->request_id = little_endian_to_uint32(&pbuffer[3]);
-        command->type = pbuffer[7];
-        command->body = &pbuffer[8];
+        command->request_id = little_endian_to_uint32(&pbuffer[6]);
+        command->type = pbuffer[10];
+        command->body = &pbuffer[11];
     }
 
     command_type = command->type;
     if (command_type == e_MON_CMD_PING) {
         cont = monitor_binary_process_ping(command);
     } else if(command_type == e_MON_CMD_MEM_GET) {
-        cont = monitor_binary_process_memdump(command);
+        cont = monitor_binary_process_mem_get(command);
+    } else if(command_type == e_MON_CMD_MEM_SET) {
+        cont = monitor_binary_process_mem_set(command);
     } else if(command_type == e_MON_CMD_CHECKPOINT_SET) {
         cont = monitor_binary_process_checkpoint_set(command);
     } else if(command_type == e_MON_CMD_CHECKPOINT_LIST) {
@@ -1094,7 +1204,6 @@ static int monitor_binary_process_command(unsigned char * pbuffer, int buffer_si
                 command->type, command->length);
     }
 
-    *pbuffer_pos = 0;
     pbuffer[0] = 0;
 
     lib_free(command);
@@ -1134,14 +1243,20 @@ static int monitor_binary_activate(void)
 
 int monitor_binary_get_command_line(void)
 {
-    static char buffer[300] = { 0 };
+    static size_t buffer_size = 0;
     static int bufferpos = 0;
+    static unsigned char *buffer;
 
     while(monitor_binary_data_available()) {
+        if(!buffer) {
+            buffer = lib_malloc(300);
+        }
+
         /* Do not read more from network until all commands in current buffer is fully processed */
-        int body_length;
+        uint32_t body_length;
         uint8_t api_version;
-        int header_size = 8;
+        unsigned int remaining_header_size = 5;
+        unsigned int command_size;
 
         int n = monitor_binary_receive(buffer, 1);
         if (n == 0) {
@@ -1156,32 +1271,43 @@ int monitor_binary_get_command_line(void)
             continue;
         }
 
-        n = monitor_binary_receive(&buffer[1], 2);
+        n = monitor_binary_receive(&buffer[1], sizeof(api_version) + sizeof(body_length));
 
-        if (n < 2) {
+        if (n < sizeof(api_version) + sizeof(body_length)) {
             monitor_binary_quit();
             return 0;
         }
 
         api_version = buffer[1];
-        body_length = buffer[2];
+        body_length = little_endian_to_uint32(&buffer[2]);
 
         if (api_version == 0x01) {
-            header_size = 8;
+            remaining_header_size = 5;
         } else {
             continue;
         }
 
-        n = monitor_binary_receive(&buffer[3], header_size - 3 + body_length);
+        command_size = sizeof(api_version) + sizeof(body_length) + remaining_header_size + body_length + 1;
+        if(!buffer || buffer_size < command_size) {
+            buffer = lib_realloc(buffer, command_size);
+            buffer_size = command_size;
+        }
 
-        if (n < header_size - 3 + body_length) {
-            monitor_binary_quit();
-            return 0;
+        n = 0;
+
+        while(n < remaining_header_size + body_length) {
+            int o = monitor_binary_receive(&buffer[6], remaining_header_size + body_length - n);
+            if(o <= 0) {
+                monitor_binary_quit();
+                return 0;
+            }
+
+            n += o;
         }
 
         ui_dispatch_events();
 
-        if(!monitor_binary_process_command((unsigned char*)buffer, sizeof buffer, &bufferpos)) {
+        if(!monitor_binary_process_command(buffer)) {
             return 0;
         }
     }

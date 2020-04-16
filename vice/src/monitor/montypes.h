@@ -277,6 +277,7 @@ extern int mon_banknum_from_bank(MEMSPACE mem, const char *bankname);
 extern void mon_display_io_regs(MON_ADDR addr);
 extern void mon_evaluate_default_addr(MON_ADDR *a);
 extern void mon_set_mem_val(MEMSPACE mem, uint16_t mem_addr, uint8_t val);
+extern void mon_set_mem_val_ex(MEMSPACE mem, int bank, uint16_t mem_addr, uint8_t val);
 extern bool mon_inc_addr_location(MON_ADDR *a, unsigned inc);
 extern void mon_start_assemble_mode(MON_ADDR addr, char *asm_line);
 extern long mon_evaluate_address_range(MON_ADDR *start_addr, MON_ADDR *end_addr,
