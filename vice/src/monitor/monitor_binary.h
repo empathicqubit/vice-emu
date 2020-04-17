@@ -45,8 +45,8 @@ extern void monitor_binary_event_closed(void);
 
 extern void monitor_check_binary(void);
 
-extern int monitor_binary_receive(char * buffer, size_t buffer_length);
-extern int monitor_binary_transmit(const char * buffer, size_t buffer_length);
+extern int monitor_binary_receive(unsigned char *buffer, size_t buffer_length);
+extern int monitor_binary_transmit(const unsigned char *buffer, size_t buffer_length);
 extern int monitor_binary_get_command_line(void);
 
 extern int monitor_is_binary(void);
