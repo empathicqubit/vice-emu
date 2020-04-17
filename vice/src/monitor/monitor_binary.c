@@ -1039,7 +1039,7 @@ static int set_binary_server_address(const char *name, void *param)
 
 /*! \brief string resources used by the binary monitor module */
 static const resource_string_t resources_string[] = {
-    { "BinaryMonitorServerAddress", "ip4://127.0.0.1:29172", RES_EVENT_NO, NULL,
+    { "BinaryMonitorServerAddress", "ip4://127.0.0.1:6502", RES_EVENT_NO, NULL,
       &monitor_binary_server_address, set_binary_server_address, NULL },
     RESOURCE_STRING_LIST_END
 };

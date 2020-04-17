@@ -5449,6 +5449,14 @@ Boolean specifying whether the remote monitor server is enabled.
 @item MonitorServerAddress
 String specifying the address the remote monitor server listens to (ip4://127.0.0.1:6510)
 
+@vindex BinaryMonitorServer
+@item BinaryMonitorServer
+Boolean specifying whether the binary monitor server is enabled.
+
+@vindex BinaryMonitorServerAddress
+@item BinaryMonitorServerAddress
+String specifying the address the binary monitor server listens to (ip4://127.0.0.1:6502)
+
 @vindex NativeMonitor
 @item NativeMonitor
 Boolean specifying whether the native monitor is enabled. When enabled, the monitor
@@ -5501,6 +5509,15 @@ Enable/Disable remote monitor
 @findex -remotemonitoraddress
 @item -remotemonitoraddress <name>
 The local address the remote monitor should bind to
+
+@findex -binarymonitor, +binarymonitor
+@item -binarymonitor
+@itemx +binarymonitor
+Enable/Disable binary monitor
+
+@findex -binarymonitoraddress
+@item -binarymonitoraddress <name>
+The local address the binary monitor should bind to
 
 @findex -nativemonitor, +nativemonitor
 @item -nativemonitor
@@ -16204,83 +16221,334 @@ Display the specified number in decimal, hex, octal and binary.
 @end table
 
 @chapter Binary monitor
-The binary remote monitor commands are sent over a dedicated channel, specified
-with the command line options -binarymonitor & -binarymonitoraddress.
+The binary remote monitor commands are sent over a dedicated connection, specified
+with the command line options @code{-binarymonitor} & @code{-binarymonitoraddress}. @xref{Monitor settings}.
 The remote monitor detects a binary command because it starts with ASCII STX
 (0x02). Note that there is no termination character. The command length acts as
 synchronisation point.
 
 All multibyte values are in little endian order unless otherwise specified.
 
-Commands are structured as detailed in the COMMAND STRUCTURE section.
+@node Binary Command Structure
+@section Command Structure
 
-Responses are structured as detailed in the RESPONSE STRUCTURE section.
-They can either be sent in response to a binary command, or when certain
-events occur.
+@table @strong
 
-COMMAND STRUCTURE
-==============================
+@item byte 0: 0x02 (STX)
+@item byte 1: API version ID (currently 0x01)
 
-byte 0: 0x02 (STX)
-byte 1: API version ID (currently 0x01)
-byte 2-5: length
-    Note that the command length does *not* count the STX, the command length, 
-    the command byte, or the request ID. Basically nothing in the header, 
-    just the body.
-byte 6-9: request id
-    In little endian order. All multibyte values are in little endian order,
-    unless otherwise specified. There is no requirement for this to be unique,
-    but it makes it easier to match up the responses if you do.
-byte 10: The numeric command type. See the COMMANDS section for more details.
-byte 11+: The command body. See the COMMANDS section.
+@item byte 2-5: length
+Note that the command length does *not* count the STX, the command length, 
+the command byte, or the request ID. Basically nothing in the header, 
+just the body.
 
-RESPONSE STRUCTURE
-===============================
+@item byte 6-9: request id
+In little endian order. All multibyte values are in little endian order,
+unless otherwise specified. There is no requirement for this to be unique,
+but it makes it easier to match up the responses if you do.
 
-byte 0: 0x02 (STX)
-byte 1: API version ID (currently 0x01)
-byte 2-5: response body length. Does not include any header fields
-byte 6: response type
-    This is usually the same as the command ID
-byte 7: error code
-    0x00: ok, everything worked
-    0x80: command length is not correct for this command
-    0x81: an invalid parameter occurred
+@item byte 10: The numeric command type
+@xref{Binary Commands}
 
-See invidual command documentation for other error codes
+@item byte 11+: The command body. 
+@xref{Binary Commands}
 
-byte 8-11: request ID
-    This is the request ID given to initiate this response.
-    If the value is 0xffffffff, Then the response was initiated by an event,
-    such as hitting a checkpoint.
-byte 12+: response body. See the COMMANDS section for more details.
+@end table
 
-COMMANDS (command body: bytes 11+, response body: bytes 12+)
-======================
+@node Binary Response Structure
+@section Response Structure
 
-----------------------
-0x01: MON_CMD_MEM_GET
-----------------------
+@table @strong
+
+@item byte 0: 0x02 (STX)
+@item byte 1: API version ID (currently 0x01)
+@item byte 2-5: response body length. Does not include any header fields
+
+@item byte 6: response type
+This is usually the same as the command ID
+
+@item byte 7: error code
+
+@table @code
+@item 0x00
+ok, everything worked
+
+@item 0x80
+command length is not correct for this command
+
+@item 0x81
+an invalid parameter occurred@*
+@*
+@xref{Binary Commands} for other error codes
+
+@end table
+
+@item byte 8-11: request ID
+This is the request ID given to initiate this response.
+If the value is 0xffffffff, Then the response was initiated by an event,
+such as hitting a checkpoint.
+
+@item byte 12+: response body.
+@xref{Binary Commands}.
+
+@end table
+
+@node Binary Monitor Example Exchange
+@section Example Exchange
+
+@enumerate
+
+@item Client connects to ip4://127.0.0.1:6502
+
+@item Client sends a command to set a temporary checkpoint:
+@*
+@* @code{02 | 01 | 08 00 00 00 | ad de 34 12 | 12 | e2 fc | e3 fc | 01 | 04 | 01 }
+@*
+@*
+
+@table @code
+@item 0x02
+Begin command
+
+@item 0x01
+API version 1
+
+@item 0x00000008
+The command excluding the header is 8 bytes long.
+
+@item 0x1234dead
+The request ID is 0x1234dead. The response will contain this ID.
+
+@item 0x12
+The command type is 0x12, MON_CMD_CHECKPOINT_SET.
+
+@item 0xfce2
+The address range of the checkpoint starts at 0xfce2.
+
+@item 0xfce3
+The address range of the checkpoint ends at 0xfce3.
+
+@item 0x01
+The checkpoint is enabled.
+
+@item 0x04
+The checkpoint will trigger on exec from 0xfce2 - 0xfce3.
+
+@item 0x01
+The checkpoint is temporary.
+
+@end table
+
+@item The transmission of any command causes the emulator to stop, similar to
+the regular monitor. This causes the server to respond with a list of register
+values. @*
+@*
+@code{02 | 01 | 26 00 00 00 | 31 | 00 | ff ff ff ff | 09 00 [ 03 @{ 03 | cf e5 @} 03 @{ 00 | 00 00 @} ... ] } @*
+@*
+
+@table @code
+@item 0x02
+Begin response
+
+@item 0x01
+API Version 1
+
+@item 0x00000026
+Response length is 38
+
+@item 0x31
+Response type is 0x31, MON_RESPONSE_REGISTER_INFO
+
+@item 0x00
+No error occurred
+
+@item 0xffffffff
+This response was not directly triggered by a command from the client.
+
+@item 0x0009
+The register array is 9 items long
+
+@item @strong{PC:}
+@table @code
+@item 0x03
+The register array item is 3 bytes long
+
+@item 0x03
+The register is the PC (ID 3) Note: you should find the names to these IDs using
+the MON_CMD_REGISTERS_AVAILABLE command. Do not rely on them being consistent.
+
+@item 0xe5cf
+The register value is 0xe5cf
+
+@end table
+
+@item @strong{A:}
+@table @code
+@item 0x03
+The register array item is 3 bytes long
+
+@item 0x00
+The register is A (ID 0) Note: you should find the names to these IDs using
+the MON_CMD_REGISTERS_AVAILABLE command. Do not rely on them being consistent.
+
+@item 0x0000
+The register value is 0x0000
+
+@end table
+
+@end table
+
+@item After the register information, the server sends a stopped event to indicate that the emulator is stopped. @*
+@*
+@code{02 | 01 | 02 00 00 00 | 62 | 00 | ff ff ff ff | cf e5 } @*
+@*
+
+@table @code
+@item 0x02
+Begin response
+
+@item 0x01
+API Version 1
+
+@item 0x00000002
+Response is two bytes long.
+
+@item 0x62
+Response type is 0x62, MON_RESPONSE_STOPPED.
+
+@item 0xffffffff
+This response was not directly triggered by a command from the client.
+
+@item 0xe5cf
+The current program counter
+
+@end table
+
+@item The server processes the checkpoint set command, and sends a response to the client. @*
+@*
+@code{ ... | 11 | ... | 02 00 00 00 | 00 | e2 fc | e3 fc | 01 | 01 | 04 | 01 | 00 00 00 00 | 00 00 00 00 | 00}@*
+(Some response header fields are omitted (...) for brevity.)@*
+@*
+
+@table @code
+@item 0x11
+Response type is 0x11, MON_RESPONSE_CHECKPOINT_INFO.
+
+@item 0x00000002
+Checkpoint number is 2
+
+@item 0x00
+Checkpoint was not hit (as it was just created)
+
+@item 0xfce2
+Checkpoint start address
+
+@item 0xfce3
+Checkpoint end address
+
+@item 0x01
+The checkpoint is enabled.
+
+@item 0x04
+The checkpoint will trigger on exec from 0xfce2 - 0xfce3.
+
+@item 0x01
+The checkpoint is temporary.
+
+@item 0x00000000
+The checkpoint has been hit zero times.
+
+@item 0x00000000
+The checkpoint has been ignored zero times.
+
+@end table
+
+@item Client sends a command to continue:@*
+@*
+@code{ ... | 71 }@*
+(Some command header fields are omitted (...) for brevity.)@*
+@*
+
+@table @code
+@item 0x71
+Command type is 0x71, MON_CMD_EXIT.
+
+@end table
+
+@item Server acknowledges the command:@*
+@*
+@code{ ... | 71 | ... } @*
+(Some response header fields are omitted (...) for brevity.)@*
+@*
+
+@table @code
+@item 0x71
+Response type is 0x71, MON_RESPONSE_EXIT.
+
+@end table
+
+@item Server resumes execution and sends a resume event:@*
+@*
+@code{ ... | 63 | ... | cf e5 } @*
+(Some response header fields are omitted (...) for brevity.)@*
+@*
+
+@table @code
+@item 0x63
+Response type is 0x63, MON_RESPONSE_RESUMED.
+
+@item 0xe5cf
+Program counter is currently at 0xe5cf
+
+@end table
+
+@item Some time later, the server hits the breakpoint. This causes it to emit
+a checkpoint response. This is identical to the previous checkpoint response,
+except that it is marked as "hit" and the hit and ignore counts are updated.
+
+@item The server emits the register information and the stopped event when
+reentering the monitor, as seen previously.
+
+@end enumerate
+
+@node Binary Commands
+@section Commands
+
+These are the possible commands and responses, without the header portions
+mentioned above.
+
+@node MON_CMD_MEM_GET
+@subsection MON_CMD_MEM_GET (0x01)
 
 Reads a chunk of memory from a start address to an end address (inclusive).
 
 Command body:
 
-byte 0: side effects?
-    Should the read cause side effects?
-byte 1-2: start address
-byte 3-4: end address
-byte 5: memspace
-    Describes which part of the computer you want to read:
-    0x00: the computer (C64)
-    0x01: drive 8
-    0x02: drive 9
-    0x03: drive 10
-    0x04: drive 11
-byte 6-7: bank ID
-    Describes which bank you want. This is dependent on your
-    machine. Please look at the command MON_CMD_BANKS_AVAILABLE for details.
-    If the memspace selected doesn't support banks, this value is ignored.
+@table @strong
+@item byte 0: side effects?
+Should the read cause side effects?
+
+@item byte 1-2: start address
+
+@item byte 3-4: end address
+
+@item byte 5: memspace
+Describes which part of the computer you want to read:
+
+@itemize
+@item 0x00: main memory
+@item 0x01: drive 8
+@item 0x02: drive 9
+@item 0x03: drive 10
+@item 0x04: drive 11
+@end itemize
+
+@item byte 6-7: bank ID
+Describes which bank you want. This is dependent on your
+machine. @xref{MON_CMD_BANKS_AVAILABLE}.  If the memspace selected
+doesn't support banks, this value is ignored.
+
+@end table
 
 Response type:
 
@@ -16288,33 +16556,47 @@ Response type:
 
 Response body:
 
-byte 0-1: The length of the memory segment.
-byte 2+: The memory at the address.
+@table @strong
+@item byte 0-1: The length of the memory segment.
 
-----------------------
-0x02: MON_CMD_MEM_SET
-----------------------
+@item byte 2+: The memory at the address.
+
+@end table
+
+@node MON_CMD_MEM_SET
+@subsection MON_CMD_MEM_SET (0x02)
 
 Writes a chunk of memory from a start address to an end address (inclusive).
 
 Command body:
 
-byte 0: side effects?
-    Should the write cause side effects?
-byte 1-2: start address
-byte 3-4: end address
-byte 5: memspace
-    Describes which part of the computer you want to read:
-    0x00: the computer (C64)
-    0x01: drive 8
-    0x02: drive 9
-    0x03: drive 10
-    0x04: drive 11
-byte 6-7: bank ID
-    Describes which bank you want. This is dependent on your
-    machine. Please look at the command MON_CMD_BANKS_AVAILABLE for details.
-    If the memspace selected doesn't support banks, this byte is ignored.
-byte 8+: Memory contents to write
+@table @strong
+@item byte 0: side effects?
+Should the write cause side effects?
+
+@item byte 1-2: start address
+
+@item byte 3-4: end address
+
+@item byte 5: memspace
+Describes which part of the computer you want to write:
+
+@itemize
+@item 0x00: main memory
+@item 0x01: drive 8
+@item 0x02: drive 9
+@item 0x03: drive 10
+@item 0x04: drive 11
+@end itemize
+
+@item byte 6-7: bank ID
+Describes which bank you want. This is dependent on your machine. 
+@xref{MON_CMD_BANKS_AVAILABLE}.  
+If the memspace selected doesn't support banks, this byte is ignored.
+
+@item byte 8+: Memory contents to write
+
+@end table
 
 Response type:
 
@@ -16324,91 +16606,106 @@ Response body:
 
 Currently empty.
 
-----------------------
-0x11: MON_CMD_CHECKPOINT_GET
-----------------------
+@node MON_CMD_CHECKPOINT_GET
+@subsection MON_CMD_CHECKPOINT_GET (0x11)
 
 Gets any type of checkpoint. (break, watch, trace)
-To get the conditions, if any, use MON_CMD_COND_GET.
+To get the conditions, if any, @@pxref@{MON_CMD_COND_GET@}.
 
 Command body:
 
-byte 0-3: checkpoint number
+@table @strong
+@item byte 0-3: checkpoint number
 
-For response details, see the section CHECKPOINT RESPONSE
+@end table
 
-----------------------
-0x12: MON_CMD_CHECKPOINT_SET
-----------------------
+@xref{Binary Checkpoint Response}.
+
+@node MON_CMD_CHECKPOINT_SET
+@subsection MON_CMD_CHECKPOINT_SET (0x12)
 
 Sets any type of checkpoint. This combines the functionality of several
 textual commands (break, watch, trace) into one, as they are all the same
-with only minor variations. To set conditions, use MON_CMD_COND_SET after
+with only minor variations. To set conditions, @pxref{MON_CMD_COND_SET} after
 executing this one.
 
 Command body:
 
-byte 0-1: start address
-byte 2-3: end address
-byte 4: stop when hit
-    0x01: true
-    0x00: false
-byte 5: enabled
-    0x01: true
-    0x00: false
-byte 6: CPU operation
-    0x01: load
-    0x02: store
-    0x04: exec
-byte 7: temporary
+@table @strong
+@item byte 0-1: start address
+
+@item byte 2-3: end address
+
+@item byte 4: stop when hit
+0x01: true, 0x00: false
+
+@item byte 5: enabled
+0x01: true, 0x00: false
+
+@item byte 6: CPU operation
+0x01: load, 0x02: store, 0x04: exec
+
+@item byte 7: temporary
     Deletes the checkpoint after it has been hit once. This is similar to
     "until" command, but it will not resume the emulator.
 
-For response details, see the section CHECKPOINT RESPONSE
+@end table
 
-----------------------
-0x12: MON_CMD_CHECKPOINT_DELETE
-----------------------
+@xref{Binary Checkpoint Response}.
+
+@node MON_CMD_CHECKPOINT_DELETE
+@subsection MON_CMD_CHECKPOINT_DELETE (0x13)
 
 Deletes any type of checkpoint. (break, watch, trace)
 
 Command body:
 
-byte 0-3: checkpoint number
+@table @strong
+@item byte 0-3: checkpoint number
+
+@end table
 
 Response type:
 
 0x13: MON_RESPONSE_CHECKPOINT_DELETE
 
-----------------------
-0x14: MON_CMD_CHECKPOINT_LIST
-----------------------
+Response body:
+
+Currently empty.
+
+@node MON_CMD_CHECKPOINT_LIST
+@subsection MON_CMD_CHECKPOINT_LIST (0x14)
 
 Response type:
 
 Emits a series of MON_RESPONSE_CHECKPOINT_INFO responses
-(See the section CHECKPOINT RESPONSE) followed by
+(@pxref{Binary Checkpoint Response}) followed by
 
 0x14: MON_RESPONSE_CHECKPOINT_LIST
 
 Response body:
 
-MON_RESPONSE_CHECKPOINT_LIST:
+@table @strong
+@item byte 0-3: The total number of checkpoints
 
-byte 0-3: The total number of checkpoints
+@end table
 
------------------------------------
-0x22: MON_CMD_COND_SET
------------------------------------
+@node MON_CMD_COND_SET
+@subsection MON_CMD_COND_SET (0x22)
 
 Sets a condition on an existing checkpoint.
 
 Command body:
 
-byte 0-3: checkpoint number
-byte 4: condition expression length
-byte 5+: condition expression string
-    This is the same format used on the command line. Not null terminated.
+@table @strong
+@item byte 0-3: checkpoint number
+
+@item byte 4: condition expression length
+
+@item byte 5+: condition expression string
+This is the same format used on the command line. Not null terminated.
+
+@end table
 
 Response type:
 
@@ -16418,9 +16715,7 @@ Response body:
 
 Currently empty.
 
------------------------------------
-0x31: MON_CMD_REGISTERS_GET
------------------------------------
+@subsection MON_CMD_REGISTERS_GET (0x31)
 
 Get details about the registers
 
@@ -16428,39 +16723,29 @@ Command body:
 
 Currently empty.
 
-Response type:
+@xref{Binary Register Response}
 
-0x31: MON_RESPONSE_REGISTER_INFO
-
-Response body:
-
-See the section REGISTERS RESPONSE
-
------------------------------------
-0x32: MON_CMD_REGISTERS_SET
------------------------------------
+@node MON_CMD_REGISTERS_SET
+@subsection MON_CMD_REGISTERS_SET (0x32)
 
 Set the register values
 
 Command body:
 
-byte 0-1: The count of the array items
-byte 2+: An array with items of structure:
+@table @strong
+@item byte 0-1: The count of the array items
+
+@item byte 2+: An array with items of structure:
     byte 0: Size of the item, excluding this byte
     byte 1: ID of the register
     byte 2-3: register value
 
-Response type:
+@end table
 
-0x31: MON_RESPONSE_REGISTER_INFO
+@xref{Binary Register Response}
 
-Response body:
-
-See the section REGISTERS RESPONSE
-
------------------------------------
-0x71: MON_CMD_EXIT
------------------------------------
+@node MON_CMD_EXIT
+@subsection MON_CMD_EXIT (0x71)
 
 Exit the monitor until the next breakpoint.
 
@@ -16476,9 +16761,8 @@ Response body:
 
 Currently empty.
 
------------------------------------
-0x72: MON_CMD_QUIT
------------------------------------
+@node MON_CMD_QUIT
+@subsection MON_CMD_QUIT (0x72)
 
 Quits VICE.
 
@@ -16494,17 +16778,20 @@ Response body:
 
 Currently empty.
 
------------------------------------
-0x73: MON_CMD_ADVANCE_INSTRUCTIONS
------------------------------------
+@node MON_CMD_ADVANCE_INSTRUCTIONS
+@subsection MON_CMD_ADVANCE_INSTRUCTIONS (0x73)
 
 Step over a certain number of instructions.
 
 Command body:
 
-byte 0: Step over subroutines?
-    Should subroutines count as a single instruction?
-byte 1-2: How many instructions to step over.
+@table @strong
+@item byte 0: Step over subroutines?
+Should subroutines count as a single instruction?
+
+@item byte 1-2: How many instructions to step over.
+
+@end table
 
 Response type:
 
@@ -16514,9 +16801,8 @@ Response body:
 
 Currently empty.
 
--------------------
-0x81: MON_CMD_PING
--------------------
+@node MON_CMD_PING
+@subsection MON_CMD_PING (0x81)
 
 Get an empty response
 
@@ -16532,9 +16818,8 @@ Response body:
 
 Always empty
 
-----------------------
-0x82: MON_CMD_BANKS_AVAILABLE
-----------------------
+@node MON_CMD_BANKS_AVAILABLE
+@subsection MON_CMD_BANKS_AVAILABLE (0x82)
 
 Gives a listing of all the bank IDs for the running machine with their names.
 
@@ -16548,16 +16833,25 @@ Response type:
 
 Response body:
 
-byte 0-1: The count of the array items
-byte 2+: An array with items of structure:
-    byte 0: Size of the item, excluding this byte
-    byte 1-2: ID of the bank
-    byte 3: Length of name
-    byte 4+: Name
+@table @strong
+@item byte 0-1: The count of the array items
+@item byte 2+: An array with items of structure:
 
-----------------------
-0x83: MON_CMD_REGISTERS_AVAILABLE
-----------------------
+@table @strong
+@item byte 0: Size of the item, excluding this byte
+
+@item byte 1-2: bank ID
+
+@item byte 3: Name length
+
+@item byte 4+: Name
+
+@end table
+
+@end table
+
+@node MON_CMD_REGISTERS_AVAILABLE
+@subsection MON_CMD_REGISTERS_AVAILABLE (0x83)
 
 Gives a listing of all the registers for the running machine with their names.
 
@@ -16571,16 +16865,28 @@ Response type:
 
 Response body:
 
-byte 0-1: The count of the array items
-byte 2+: An array with items of structure:
-    byte 0: Size of the item, excluding this byte
-    byte 1: ID of the register
-    byte 2: Size of the register in bits
-    byte 3: Length of name
-    byte 4+: Name
+@table @strong
+@item byte 0-1: The count of the array items
+@item byte 2+: An array with items of structure:
 
-REGISTERS RESPONSE
-=====================
+@table @strong
+
+@item byte 0: Size of the item, excluding this byte
+
+@item byte 1: ID of the register
+
+@item byte 2: Size of the register in bits
+
+@item byte 3: Length of name
+
+@item byte 4+: Name
+
+@end table
+
+@end table
+
+@node Binary Register Response
+@subsection Register Response
 
 Response type:
 
@@ -16588,14 +16894,24 @@ Response type:
 
 Response body:
 
-byte 0-1: The count of the array items
-byte 2+: An array with items of structure:
-    byte 0: Size of the item, excluding this byte
-    byte 1: ID of the register
-    byte 2-3: register value
+@table @strong
+@item byte 0-1: The count of the array items
 
-CHECKPOINT RESPONSE
-=====================
+@item byte 2+: An array with items of structure:
+
+@table @strong
+@item byte 0: Size of the item, excluding this byte
+
+@item byte 1: ID of the register
+
+@item byte 2-3: register value
+
+@end table
+
+@end table
+
+@node Binary Checkpoint Response
+@subsection Checkpoint Response
 
 Response type:
 
@@ -16603,35 +16919,41 @@ Response type:
 
 Response body:
 
-byte 0-3: Checkpoint number
-byte 4: Currently hit?
-    0x01: true
-    0x00: false
+@table @strong
+@item byte 0-3: Checkpoint number
 
-byte 5-6: start address
-byte 7-8: end address
-byte 9: stop when hit
-    0x01: true
-    0x00: false
-byte 10: enabled
-    0x01: true
-    0x00: false
-byte 11: CPU operation
-    0x01: load
-    0x02: store
-    0x04: exec
-byte 12: temporary
-    Deletes the checkpoint after it has been hit once. This is similar to
-    "until" command, but it will not resume the emulator.
+@item byte 4: Currently hit?
+0x01: true, 0x00: false
 
-byte 13-16: hit count
-byte 17-20: ignore count
-byte 21: Has condition?
-    0x01: true
-    0x00: false
+@item byte 5-6: start address
 
-JAM RESPONSE
-===============
+@item byte 7-8: end address
+
+@item byte 9: stop when hit
+0x01: true, 0x00: false
+
+@item byte 10: enabled
+0x01: true
+0x00: false
+
+@item byte 11: CPU operation
+0x01: load, 0x02: store, 0x04: exec
+
+@item byte 12: temporary
+Deletes the checkpoint after it has been hit once. This is similar to
+"until" command, but it will not resume the emulator.
+
+@item byte 13-16: hit count
+
+@item byte 17-20: ignore count
+
+@item byte 21: Has condition?
+0x01: true, 0x00: false
+
+@end table
+
+@node Binary JAM Response
+@subsection JAM Response
 
 When the CPU jams
 
@@ -16641,10 +16963,13 @@ Response type:
 
 Response body:
 
-byte 0-1: The current program counter position
+@table @strong
+@item byte 0-1: The current program counter position
 
-STOPPED RESPONSE
-===============
+@end table
+
+@node Binary Stopped Response
+@subsection Stopped Response
 
 When the machine stops for the monitor, 
 either due to hitting a checkpoint or stepping.
@@ -16655,10 +16980,13 @@ Response type:
 
 Response body:
 
-byte 0-1: The current program counter position
+@table @strong
+@item byte 0-1: The current program counter position
 
-RESUMED RESPONSE
-===============
+@end table
+
+@node Binary Resumed Response
+@subsection Resumed Response
 
 When the machine resumes execution for any reason.
 
@@ -16668,7 +16996,10 @@ Response type:
 
 Response body:
 
-byte 0-1: The current program counter position
+@table @strong
+@item byte 0-1: The current program counter position
+
+@end table
 
 @node c1541, File formats, Monitor, Top
 @chapter c1541
