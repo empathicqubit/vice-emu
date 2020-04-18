@@ -16804,6 +16804,32 @@ Response body:
 
 Currently empty.
 
+@node MON_CMD_RESET
+@subsection Reset (0x74)
+
+Reset the system or a drive
+
+Command body:
+
+@table @strong
+@item byte 0: What to reset
+
+@itemize
+@item 0x00: Soft reset system
+@item 0x01: Hard reset system
+@item 0x08 - 0x0b: Reset drives 8 - 11
+@end itemize
+
+@end table
+
+Response type:
+
+0x74: MON_RESPONSE_RESET
+
+Response body:
+
+Currently empty.
+
 @node MON_CMD_PING
 @subsection Ping (0x81)
 
