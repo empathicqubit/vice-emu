@@ -992,15 +992,14 @@ int monitor_binary_get_command_line(void)
     static unsigned char *buffer;
 
     while (monitor_binary_data_available()) {
-        if (!buffer) {
-            buffer = lib_malloc(300);
-        }
-
-        /* Do not read more from network until all commands in current buffer is fully processed */
         uint32_t body_length;
         uint8_t api_version;
         unsigned int remaining_header_size = 5;
         unsigned int command_size;
+
+        if (!buffer) {
+            buffer = lib_malloc(300);
+        }
 
         int n = monitor_binary_receive(buffer, 1);
         if (n == 0) {
