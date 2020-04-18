@@ -293,7 +293,7 @@ void monitor_binary_response_register_info(uint32_t request_id) {
 
     do {
         ++regs_cursor;
-    } while(regs_cursor->name);
+    } while (regs_cursor->name);
 
     count = regs_cursor - regs;
 
@@ -315,7 +315,7 @@ void monitor_binary_response_register_info(uint32_t request_id) {
         response_cursor = write_uint16((uint16_t)regs_cursor->val, response_cursor);
 
         ++regs_cursor;
-    } while(regs_cursor->name);
+    } while (regs_cursor->name);
 
     monitor_binary_response(response_size, e_MON_RESPONSE_REGISTER_INFO, e_MON_ERR_OK, request_id, response);
 
@@ -371,14 +371,14 @@ static int monitor_binary_process_checkpoint_get(binary_command_t *command) {
     uint32_t brknum = little_endian_to_uint32(command->body);
     mon_checkpoint_t *checkpt;
 
-    if(command->length < sizeof(brknum)) {
+    if (command->length < sizeof(brknum)) {
         monitor_binary_error(e_MON_ERR_CMD_INVALID_LENGTH, command->request_id);
         return 1;
     }
 
     checkpt = mon_breakpoint_find_checkpoint((int)brknum);
 
-    if(!checkpt) {
+    if (!checkpt) {
         monitor_binary_error(e_MON_ERR_INVALID_PARAMETER, command->request_id);
         return 1;
     }
@@ -421,14 +421,14 @@ static int monitor_binary_process_checkpoint_delete(binary_command_t *command) {
     uint32_t brknum = little_endian_to_uint32(command->body);
     mon_checkpoint_t *checkpt;
 
-    if(command->length < sizeof(brknum)) {
+    if (command->length < sizeof(brknum)) {
         monitor_binary_error(e_MON_ERR_CMD_INVALID_LENGTH, command->request_id);
         return 1;
     }
 
     checkpt = mon_breakpoint_find_checkpoint((int)brknum);
 
-    if(!checkpt) {
+    if (!checkpt) {
         monitor_binary_error(e_MON_ERR_INVALID_PARAMETER, command->request_id);
         return 1;
     }
@@ -495,14 +495,14 @@ static int monitor_binary_process_condition_set(binary_command_t *command) {
     uint32_t brknum = little_endian_to_uint32(body);
     uint8_t length = body[4];
 
-    if(command->length < 5 + length) {
+    if (command->length < 5 + length) {
         monitor_binary_error(e_MON_ERR_CMD_INVALID_LENGTH, command->request_id);
         return 1;
     }
 
     checkpt = mon_breakpoint_find_checkpoint(brknum);
 
-    if(!checkpt) {
+    if (!checkpt) {
         monitor_binary_error(e_MON_ERR_INVALID_PARAMETER, command->request_id);
         return 1;
     }
@@ -519,7 +519,7 @@ static int monitor_binary_process_condition_set(binary_command_t *command) {
 
     sprintf(cmd, cmd_fmt, brknum, cond);
 
-    if(parse_and_execute_line(cmd) != 0) {
+    if (parse_and_execute_line(cmd) != 0) {
         monitor_binary_error(e_MON_ERR_INVALID_PARAMETER, command->request_id);
         return 1;
     }
@@ -555,7 +555,7 @@ static int monitor_binary_process_advance_instructions(binary_command_t *command
 static int monitor_binary_process_reset(binary_command_t *command) {
     uint8_t reset_type = command->body[0];
 
-    if(command->length < 1) {
+    if (command->length < 1) {
         monitor_binary_error(e_MON_ERR_CMD_INVALID_LENGTH, command->request_id);
         return 1;
     }
@@ -991,8 +991,8 @@ int monitor_binary_get_command_line(void)
     static size_t buffer_size = 0;
     static unsigned char *buffer;
 
-    while(monitor_binary_data_available()) {
-        if(!buffer) {
+    while (monitor_binary_data_available()) {
+        if (!buffer) {
             buffer = lib_malloc(300);
         }
 
@@ -1032,7 +1032,7 @@ int monitor_binary_get_command_line(void)
         }
 
         command_size = sizeof(api_version) + sizeof(body_length) + remaining_header_size + body_length + 1;
-        if(!buffer || buffer_size < command_size) {
+        if (!buffer || buffer_size < command_size) {
             buffer = lib_realloc(buffer, command_size);
             buffer_size = command_size;
         }
@@ -1041,7 +1041,7 @@ int monitor_binary_get_command_line(void)
 
         while (n < remaining_header_size + body_length) {
             int o = monitor_binary_receive(&buffer[6], remaining_header_size + body_length - n);
-            if(o <= 0) {
+            if (o <= 0) {
                 monitor_binary_quit();
                 return 0;
             }
