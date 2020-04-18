@@ -16995,8 +16995,7 @@ Response body:
 0x01: true, 0x00: false
 
 @item byte 10: enabled
-0x01: true
-0x00: false
+0x01: true, 0x00: false
 
 @item byte 11: CPU operation
 0x01: load, 0x02: store, 0x04: exec
