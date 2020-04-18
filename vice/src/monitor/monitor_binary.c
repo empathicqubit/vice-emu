@@ -67,8 +67,7 @@ enum t_binary_command {
     e_MON_CMD_CHECKPOINT_DELETE = 0x13,
     e_MON_CMD_CHECKPOINT_LIST = 0x14,
 
-    e_MON_CMD_COND_GET = 0x21,
-    e_MON_CMD_COND_SET = 0x22,
+    e_MON_CMD_CONDITION_SET = 0x22,
 
     e_MON_CMD_REGISTERS_GET = 0x31,
     e_MON_CMD_REGISTERS_SET = 0x32,
@@ -92,7 +91,7 @@ enum t_binary_response {
     e_MON_RESPONSE_CHECKPOINT_DELETE = 0x13,
     e_MON_RESPONSE_CHECKPOINT_LIST = 0x14,
 
-    e_MON_RESPONSE_COND_INFO = 0x21,
+    e_MON_RESPONSE_CONDITION_SET = 0x22,
 
     e_MON_RESPONSE_REGISTER_INFO = 0x31,
 
@@ -453,6 +452,54 @@ static int monitor_binary_process_checkpoint_list(binary_command_t *command) {
     monitor_binary_response(sizeof(uint32_t), e_MON_RESPONSE_CHECKPOINT_LIST, e_MON_ERR_OK, request_id, response);
 
     lib_free(checkpts);
+
+    return 1;
+}
+
+static int monitor_binary_process_condition_set(binary_command_t *command) {
+    const unsigned char* cmd_fmt = "cond %u if ( %s )";
+
+    mon_checkpoint_t *checkpt;
+    unsigned char *cond;
+    size_t cmd_length;
+    unsigned char *cmd;
+
+    unsigned char *body = command->body;
+    uint32_t brknum = little_endian_to_uint32(body);
+    uint8_t length = body[4];
+
+    if(command->length < 5 + length) {
+        monitor_binary_error(e_MON_ERR_CMD_INVALID_LENGTH, command->request_id);
+        return 1;
+    }
+
+    checkpt = mon_breakpoint_find_checkpoint(brknum);
+
+    if(!checkpt) {
+        monitor_binary_error(e_MON_ERR_INVALID_PARAMETER, command->request_id);
+    }
+
+    cond = lib_malloc(length + 1);
+
+    memcpy(cond, &body[5], length);
+
+    cond[length] = '\0';
+
+    cmd_length = snprintf(NULL, 0, cmd_fmt, brknum, cond);
+
+    cmd = lib_malloc(cmd_length);
+
+    sprintf(cmd, cmd_fmt, brknum, cond);
+
+    if(parse_and_execute_line(cmd) != 0) {
+        monitor_binary_error(e_MON_ERR_INVALID_PARAMETER, command->request_id);
+        return 1;
+    }
+
+    monitor_binary_response(0, e_MON_CMD_CONDITION_SET, e_MON_ERR_OK, command->request_id, NULL);
+
+    lib_free(cond);
+    lib_free(cmd);
 
     return 1;
 }
@@ -827,6 +874,9 @@ static int monitor_binary_process_command(unsigned char * pbuffer) {
         cont = monitor_binary_process_checkpoint_delete(command);
     } else if (command_type == e_MON_CMD_CHECKPOINT_LIST) {
         cont = monitor_binary_process_checkpoint_list(command);
+
+    } else if (command_type == e_MON_CMD_CONDITION_SET) {
+        cont = monitor_binary_process_condition_set(command);
 
     } else if (command_type == e_MON_CMD_REGISTERS_GET) {
         cont = monitor_binary_process_registers_get(command);

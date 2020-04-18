@@ -75,6 +75,6 @@ extern mon_checkpoint_t *mon_breakpoint_find_checkpoint(int brknum);
 extern mon_checkpoint_t **mon_breakpoint_checkpoint_list_get(unsigned int *len);
 
 /* defined in mon_parse.y, and thus, in mon_parse.c */
-extern void parse_and_execute_line(char *input);
+extern int parse_and_execute_line(char *input);
 
 #endif
