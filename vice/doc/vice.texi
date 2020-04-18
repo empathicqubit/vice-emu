@@ -16677,6 +16677,10 @@ Currently empty.
 @node MON_CMD_CHECKPOINT_LIST
 @subsection Checkpoint list (0x14)
 
+Command body:
+
+Currently empty.
+
 Response type:
 
 Emits a series of MON_RESPONSE_CHECKPOINT_INFO responses
@@ -16685,6 +16689,32 @@ Emits a series of MON_RESPONSE_CHECKPOINT_INFO responses
 0x14: MON_RESPONSE_CHECKPOINT_LIST
 
 Response body:
+
+@table @strong
+@item byte 0-3: The total number of checkpoints
+
+@end table
+
+@node MON_CMD_CHECKPOINT_TOGGLE
+@subsection Checkpoint toggle (0x15)
+
+Command body:
+
+@table @strong
+@item byte 0-3: Checkpoint number
+
+@item byte 4: Enabled?
+0x00: disabled, 0x01: enabled
+
+@end table
+
+Response type:
+
+0x15: MON_RESPONSE_CHECKPOINT_TOGGLE
+
+Response body:
+
+Currently empty.
 
 @table @strong
 @item byte 0-3: The total number of checkpoints

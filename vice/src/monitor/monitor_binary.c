@@ -66,6 +66,7 @@ enum t_binary_command {
     e_MON_CMD_CHECKPOINT_SET = 0x12,
     e_MON_CMD_CHECKPOINT_DELETE = 0x13,
     e_MON_CMD_CHECKPOINT_LIST = 0x14,
+    e_MON_CMD_CHECKPOINT_TOGGLE = 0x15,
 
     e_MON_CMD_CONDITION_SET = 0x22,
 
@@ -458,6 +459,30 @@ static int monitor_binary_process_checkpoint_list(binary_command_t *command) {
     return 1;
 }
 
+static int monitor_binary_process_checkpoint_toggle(binary_command_t *command) {
+    uint32_t brknum = little_endian_to_uint32(command->body);
+    uint8_t enable = !!command->body[4];
+    mon_checkpoint_t *checkpt;
+    
+    if (command->length < 5) {
+        monitor_binary_error(e_MON_ERR_CMD_INVALID_LENGTH, command->request_id);
+        return 1;
+    }
+
+    checkpt = mon_breakpoint_find_checkpoint((int)brknum);
+
+    if (!checkpt) {
+        monitor_binary_error(e_MON_ERR_INVALID_PARAMETER, command->request_id);
+        return 1;
+    }
+
+    mon_breakpoint_switch_checkpoint((int)enable, (int)brknum);
+
+    monitor_binary_response(0, e_MON_CMD_CHECKPOINT_TOGGLE, e_MON_ERR_OK, command->request_id, NULL);
+
+    return 1;
+}
+
 static int monitor_binary_process_condition_set(binary_command_t *command) {
     const unsigned char* cmd_fmt = "cond %u if ( %s )";
 
@@ -536,6 +561,8 @@ static int monitor_binary_process_reset(binary_command_t *command) {
     }
 
     mon_reset_machine((int)reset_type);
+
+    monitor_binary_response(0, e_MON_RESPONSE_RESET, e_MON_ERR_OK, command->request_id, NULL);
 
     return !exit_mon;
 }
@@ -890,6 +917,8 @@ static int monitor_binary_process_command(unsigned char * pbuffer) {
         cont = monitor_binary_process_checkpoint_delete(command);
     } else if (command_type == e_MON_CMD_CHECKPOINT_LIST) {
         cont = monitor_binary_process_checkpoint_list(command);
+    } else if (command_type == e_MON_CMD_CHECKPOINT_TOGGLE) {
+        cont = monitor_binary_process_checkpoint_toggle(command);
 
     } else if (command_type == e_MON_CMD_CONDITION_SET) {
         cont = monitor_binary_process_condition_set(command);
