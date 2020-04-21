@@ -144,6 +144,8 @@ static void mon_buffer_add(const char *buffer, unsigned int bufferlen)
     }
 }
 
+/*! \internal \brief Notify interested interfaces that the monitor opened.
+*/
 void mon_event_opened(void) {
     #ifdef HAVE_NETWORK
         if (monitor_is_binary()) {
@@ -152,6 +154,8 @@ void mon_event_opened(void) {
     #endif
 }
 
+/*! \internal \brief Notify interested interfaces that the monitor closed.
+*/
 void mon_event_closed(void) {
     #ifdef HAVE_NETWORK
         if (monitor_is_binary()) {
@@ -295,7 +299,6 @@ char *uimon_in(const char *prompt)
         }
 
         if (monitor_is_remote() || monitor_is_binary()) {
-            // FIXME: This is lazy and introduces an unnecessary delay.
             vsyncarch_sleep(100);
 
             if (monitor_is_binary()) {

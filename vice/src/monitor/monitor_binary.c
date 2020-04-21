@@ -202,6 +202,7 @@ void monitor_check_binary(void)
 
 #define MON_EVENT_ID 0xffffffff
 
+/*! \internal \brief Write uint16 to buffer and return pointer to byte after */
 static unsigned char *write_uint16(uint16_t input, unsigned char *output) {
     output[0] = input & 0xFFu;
     output[1] = (input >> 8) & 0xFFu;
@@ -209,6 +210,7 @@ static unsigned char *write_uint16(uint16_t input, unsigned char *output) {
     return output + 2;
 }
 
+/*! \internal \brief Write uint32 to buffer and return pointer to byte after */
 static unsigned char *write_uint32(uint32_t input, unsigned char *output) {
     output[0] = input & 0xFFu;
     output[1] = (input >> 8) & 0xFFu;
@@ -218,6 +220,7 @@ static unsigned char *write_uint32(uint32_t input, unsigned char *output) {
     return output + 4;
 }
 
+/*! \internal \brief Write string to buffer and return pointer to byte after */
 static unsigned char *write_string(uint8_t length, unsigned char *input, unsigned char *output) {
     output[0] = length;
     memcpy(&output[1], input, length);
@@ -225,10 +228,12 @@ static unsigned char *write_string(uint8_t length, unsigned char *input, unsigne
     return output + length + 1;
 }
 
+/*! \internal \brief Read 32bit little endian value from buffer to uint32 value */
 static uint32_t little_endian_to_uint32(unsigned char *input) {
     return (input[3] << 24) + (input[2] << 16) + (input[1] << 8) + input[0];
 }
 
+/*! \internal \brief Read 16bit little endian value from buffer to uint16 value */
 static uint16_t little_endian_to_uint16(unsigned char *input) {
     return (input[1] << 8) + input[0];
 }
@@ -322,15 +327,25 @@ void monitor_binary_response_register_info(uint32_t request_id) {
     lib_free(response);
 }
 
+/*! \internal \brief called when the monitor is opened */
 void monitor_binary_event_opened(void) {
     monitor_binary_response_register_info(MON_EVENT_ID);
     monitor_binary_response_stopped(MON_EVENT_ID);
 }
 
+/*! \internal \brief called when the monitor is closed */
 void monitor_binary_event_closed(void) {
     monitor_binary_response_resumed(MON_EVENT_ID);
 }
 
+/*! \internal \brief Responds with information about a checkpoint.
+
+ \param request_id ID of the request
+
+ \param mon_checkpoint_t The checkpoint
+
+ \param hit Is the checkpoint hit in the emulator?
+*/
 void monitor_binary_response_checkpoint_info(uint32_t request_id, mon_checkpoint_t *checkpt, bool hit) {
     unsigned char response[22];
     MEMORY_OP op = (MEMORY_OP)(
@@ -484,12 +499,12 @@ static int monitor_binary_process_checkpoint_toggle(binary_command_t *command) {
 }
 
 static int monitor_binary_process_condition_set(binary_command_t *command) {
-    const unsigned char* cmd_fmt = "cond %u if ( %s )";
+    const char* cmd_fmt = "cond %u if ( %s )";
 
     mon_checkpoint_t *checkpt;
     unsigned char *cond;
     size_t cmd_length;
-    unsigned char *cmd;
+    char *cmd;
 
     unsigned char *body = command->body;
     uint32_t brknum = little_endian_to_uint32(body);

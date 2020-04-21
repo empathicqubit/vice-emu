@@ -623,7 +623,19 @@ void mon_bank(MEMSPACE mem, const char *bankname)
     }
 }
 
-/* -1: Banks unavailable, 0: Bank invalid, 1: Bank valid */
+/*! \internal \brief check if the bank number is valid for memspace
+
+ \param mem
+   The memspace of the bank
+
+ \param banknum
+   The number of the bank
+
+ \return
+   -1: Memspace doesn't have banks
+   0: Bank number invalid
+   1: Bank number valid
+*/
 const int mon_banknum_validate(MEMSPACE mem, int banknum)
 {
     const int *banknums;
@@ -761,6 +773,21 @@ void mon_set_mem_val(MEMSPACE mem, uint16_t mem_addr, uint8_t val)
     }    
 }
 
+/*! \internal \brief set a byte of memory in a specific bank, not the current.
+
+ \param mem
+   Memspace of bank
+
+ \param bank
+   The bank number
+
+ \param mem_addr
+   The 16 bit memory address
+
+ \param val
+   The byte to write
+
+*/
 void mon_set_mem_val_ex(MEMSPACE mem, int bank, uint16_t mem_addr, uint8_t val)
 {
     if (monitor_diskspace_dnr(mem) >= 0) {
