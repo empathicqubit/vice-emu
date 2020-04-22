@@ -16302,7 +16302,7 @@ such as hitting a checkpoint.
 
 @item Client sends a command to set a temporary checkpoint:
 @*
-@* @code{02 | 01 | 08 00 00 00 | ad de 34 12 | 12 | e2 fc | e3 fc | 01 | 04 | 01 }
+@* @code{02 | 01 | 08 00 00 00 | ad de 34 12 | 12 | e2 fc | e3 fc | 01 | 01 | 04 | 01 }
 @*
 @*
 
@@ -16327,6 +16327,9 @@ The address range of the checkpoint starts at 0xfce2.
 
 @item 0xfce3
 The address range of the checkpoint ends at 0xfce3.
+
+@item 0x01
+The checkpoint will cause the emulator to stop.
 
 @item 0x01
 The checkpoint is enabled.
@@ -16447,6 +16450,9 @@ Checkpoint start address
 
 @item 0xfce3
 Checkpoint end address
+
+@item 0x01
+The checkpoint will cause the emulator to stop.
 
 @item 0x01
 The checkpoint is enabled.

@@ -92,6 +92,7 @@ enum t_binary_response {
 
     e_MON_RESPONSE_CHECKPOINT_DELETE = 0x13,
     e_MON_RESPONSE_CHECKPOINT_LIST = 0x14,
+    e_MON_RESPONSE_CHECKPOINT_TOGGLE = 0x15,
 
     e_MON_RESPONSE_CONDITION_SET = 0x22,
 
@@ -493,7 +494,7 @@ static int monitor_binary_process_checkpoint_toggle(binary_command_t *command) {
 
     mon_breakpoint_switch_checkpoint((int)enable, (int)brknum);
 
-    monitor_binary_response(0, e_MON_CMD_CHECKPOINT_TOGGLE, e_MON_ERR_OK, command->request_id, NULL);
+    monitor_binary_response(0, e_MON_RESPONSE_CHECKPOINT_TOGGLE, e_MON_ERR_OK, command->request_id, NULL);
 
     return 1;
 }
@@ -1054,7 +1055,7 @@ int monitor_binary_get_command_line(void)
         n = 0;
 
         while (n < remaining_header_size + body_length) {
-            int o = monitor_binary_receive(&buffer[6], remaining_header_size + body_length - n);
+            int o = monitor_binary_receive(&buffer[6 + n], remaining_header_size + body_length - n);
             if (o <= 0) {
                 monitor_binary_quit();
                 return 0;
