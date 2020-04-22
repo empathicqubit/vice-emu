@@ -77,6 +77,7 @@ enum t_binary_command {
     e_MON_CMD_QUIT = 0x72,
     e_MON_CMD_ADVANCE_INSTRUCTIONS = 0x73,
     e_MON_CMD_RESET = 0x74,
+    e_MON_CMD_KEYBOARD_FEED = 0x75,
 
     e_MON_CMD_PING = 0x81,
     e_MON_CMD_BANKS_AVAILABLE = 0x82,
@@ -106,6 +107,7 @@ enum t_binary_response {
     e_MON_RESPONSE_QUIT = 0x72,
     e_MON_RESPONSE_ADVANCE_INSTRUCTIONS = 0x73,
     e_MON_RESPONSE_RESET = 0x74,
+    e_MON_RESPONSE_KEYBOARD_FEED = 0x75,
 
     e_MON_RESPONSE_PING = 0x81,
     e_MON_RESPONSE_BANKS_AVAILABLE = 0x82,
@@ -583,6 +585,24 @@ static int monitor_binary_process_reset(binary_command_t *command) {
     return !exit_mon;
 }
 
+static int monitor_binary_process_keyboard_feed(binary_command_t *command) {
+    unsigned char *body = command->body;
+    uint8_t length = body[0];
+
+    if(command->length < 1 + length) {
+        monitor_binary_error(e_MON_ERR_CMD_INVALID_LENGTH, command->request_id);
+        return 1;
+    }
+
+    body[1 + length] = '\0';
+
+    mon_keyboard_feed((char *)&body[1]);
+
+    monitor_binary_response(0, e_MON_RESPONSE_KEYBOARD_FEED, e_MON_ERR_OK, command->request_id, NULL);
+
+    return 1;
+}
+
 static int monitor_binary_process_registers_get(binary_command_t *command) {
     monitor_binary_response_register_info(command->request_id);
 
@@ -952,6 +972,8 @@ static int monitor_binary_process_command(unsigned char * pbuffer) {
         cont = monitor_binary_process_advance_instructions(command);
     } else if (command_type == e_MON_CMD_RESET) {
         cont = monitor_binary_process_reset(command);
+    } else if (command_type == e_MON_CMD_KEYBOARD_FEED) {
+        cont = monitor_binary_process_keyboard_feed(command);
 
     } else if (command_type == e_MON_CMD_BANKS_AVAILABLE) {
         cont = monitor_binary_process_banks_available(command);

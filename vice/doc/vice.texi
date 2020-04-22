@@ -16866,6 +16866,29 @@ Response body:
 
 Currently empty.
 
+@node MON_CMD_KEYBOARD_FEED
+@subsection Keyboard feed (0x75)
+
+Add text to the keyboard buffer.
+
+Command body:
+
+@table @strong
+@item byte 0: Length of text
+
+@item byte 1+: The text
+Special characters such as return are escaped with backslashes.
+
+@end table
+
+Response type:
+
+0x75: MON_RESPONSE_KEYBOARD_FEED
+
+Response body:
+
+Currently empty.
+
 @node MON_CMD_PING
 @subsection Ping (0x81)
 
