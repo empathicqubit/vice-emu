@@ -837,7 +837,7 @@ static int monitor_binary_process_mem_get(binary_command_t *command) {
     response_cursor = write_uint16(length, response_cursor);
 
     sidefx = !!new_sidefx;
-    mon_get_mem_block_ex(memspace, banknum, startaddress, endaddress, response_cursor);
+    mon_get_mem_block_ex(memspace, banknum, startaddress, endaddress - startaddress, response_cursor);
     sidefx = old_sidefx;
 
     response_cursor += length;
