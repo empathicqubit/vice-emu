@@ -16783,42 +16783,8 @@ Command body:
 
 @xref{MON_RESPONSE_REGISTER_INFO}
 
-@node MON_CMD_EXIT
-@subsection Exit (0x71)
-
-Exit the monitor until the next breakpoint.
-
-Command body:
-
-Currently empty.
-
-Response type:
-
-0x71: MON_RESPONSE_EXIT
-
-Response body:
-
-Currently empty.
-
-@node MON_CMD_QUIT
-@subsection Quit (0x72)
-
-Quits VICE.
-
-Command body:
-
-Currently empty.
-
-Response type:
-
-0x72: MON_RESPONSE_QUIT
-
-Response body:
-
-Currently empty.
-
 @node MON_CMD_ADVANCE_INSTRUCTIONS
-@subsection Advance Instructions (0x73)
+@subsection Advance Instructions (0x71)
 
 Step over a certain number of instructions.
 
@@ -16834,40 +16800,14 @@ Should subroutines count as a single instruction?
 
 Response type:
 
-0x73: MON_RESPONSE_ADVANCE_INSTRUCTIONS
-
-Response body:
-
-Currently empty.
-
-@node MON_CMD_RESET
-@subsection Reset (0x74)
-
-Reset the system or a drive
-
-Command body:
-
-@table @strong
-@item byte 0: What to reset
-
-@itemize
-@item 0x00: Soft reset system
-@item 0x01: Hard reset system
-@item 0x08 - 0x0b: Reset drives 8 - 11
-@end itemize
-
-@end table
-
-Response type:
-
-0x74: MON_RESPONSE_RESET
+0x71: MON_RESPONSE_ADVANCE_INSTRUCTIONS
 
 Response body:
 
 Currently empty.
 
 @node MON_CMD_KEYBOARD_FEED
-@subsection Keyboard feed (0x75)
+@subsection Keyboard feed (0x72)
 
 Add text to the keyboard buffer.
 
@@ -16973,11 +16913,100 @@ Response body:
 
 @end table
 
+@node MON_CMD_EXIT
+@subsection Exit (0xaa)
+
+Exit the monitor until the next breakpoint.
+
+Command body:
+
+Currently empty.
+
+Response type:
+
+0x71: MON_RESPONSE_EXIT
+
+Response body:
+
+Currently empty.
+
+@node MON_CMD_QUIT
+@subsection Quit (0xbb)
+
+Quits VICE.
+
+Command body:
+
+Currently empty.
+
+Response type:
+
+0x72: MON_RESPONSE_QUIT
+
+Response body:
+
+Currently empty.
+
+@node MON_CMD_RESET
+@subsection Reset (0xcc)
+
+Reset the system or a drive
+
+Command body:
+
+@table @strong
+@item byte 0: What to reset
+
+@itemize
+@item 0x00: Soft reset system
+@item 0x01: Hard reset system
+@item 0x08 - 0x0b: Reset drives 8 - 11
+@end itemize
+
+@end table
+
+Response type:
+
+0x74: MON_RESPONSE_RESET
+
+Response body:
+
+Currently empty.
+
+@node MON_CMD_AUTOSTART
+@subsection Autostart / autoload (0xdd)
+
+Load a program then return to the monitor
+
+Command body:
+
+@table @strong
+@item byte 0: Run after loading?
+0x01: true, 0x00: false
+
+@item byte 1-2: File index
+The index of the file to execute, if a disk image. 0x00 is the default value.
+
+@item byte 3: Length of filename
+
+@item byte 4+: Filename
+The filename to autoload.
+
+@end table
+
+Response type:
+
+0x76: MON_RESPONSE_AUTOSTART
+
+Response body:
+
+Currently empty.
+
 @node Binary Responses
 @section Responses
 
 @node MON_RESPONSE_REGISTER_INFO
-@subsection Register Response
+@subsection Register Response (0x31)
 
 Response type:
 
@@ -17002,7 +17031,7 @@ Response body:
 @end table
 
 @node MON_RESPONSE_CHECKPOINT_INFO
-@subsection Checkpoint Response
+@subsection Checkpoint Response (0x11)
 
 Response type:
 
@@ -17043,7 +17072,7 @@ Deletes the checkpoint after it has been hit once. This is similar to
 @end table
 
 @node MON_RESPONSE_JAM
-@subsection JAM Response
+@subsection JAM Response (0x61)
 
 When the CPU jams
 
@@ -17059,7 +17088,7 @@ Response body:
 @end table
 
 @node MON_RESPONSE_STOPPED
-@subsection Stopped Response
+@subsection Stopped Response (0x62)
 
 When the machine stops for the monitor, 
 either due to hitting a checkpoint or stepping.
@@ -17076,7 +17105,7 @@ Response body:
 @end table
 
 @node MON_RESPONSE_RESUMED
-@subsection Resumed Response
+@subsection Resumed Response (0x63)
 
 When the machine resumes execution for any reason.
 

@@ -43,7 +43,7 @@
 #include "vicesocket.h"
 
 #include "mon_breakpoint.h"
-
+#include "mon_file.h"
 #include "mon_register.h"
 
 #ifdef HAVE_NETWORK
@@ -73,15 +73,17 @@ enum t_binary_command {
     e_MON_CMD_REGISTERS_GET = 0x31,
     e_MON_CMD_REGISTERS_SET = 0x32,
 
-    e_MON_CMD_EXIT = 0x71,
-    e_MON_CMD_QUIT = 0x72,
-    e_MON_CMD_ADVANCE_INSTRUCTIONS = 0x73,
-    e_MON_CMD_RESET = 0x74,
-    e_MON_CMD_KEYBOARD_FEED = 0x75,
+    e_MON_CMD_ADVANCE_INSTRUCTIONS = 0x71,
+    e_MON_CMD_KEYBOARD_FEED = 0x72,
 
     e_MON_CMD_PING = 0x81,
     e_MON_CMD_BANKS_AVAILABLE = 0x82,
     e_MON_CMD_REGISTERS_AVAILABLE = 0x83,
+
+    e_MON_CMD_EXIT = 0xaa,
+    e_MON_CMD_QUIT = 0xbb,
+    e_MON_CMD_RESET = 0xcc,
+    e_MON_CMD_AUTOSTART = 0xdd,
 };
 typedef enum t_binary_command BINARY_COMMAND;
 
@@ -103,15 +105,17 @@ enum t_binary_response {
     e_MON_RESPONSE_STOPPED = 0x62,
     e_MON_RESPONSE_RESUMED = 0x63,
 
-    e_MON_RESPONSE_EXIT = 0x71,
-    e_MON_RESPONSE_QUIT = 0x72,
-    e_MON_RESPONSE_ADVANCE_INSTRUCTIONS = 0x73,
-    e_MON_RESPONSE_RESET = 0x74,
-    e_MON_RESPONSE_KEYBOARD_FEED = 0x75,
+    e_MON_RESPONSE_ADVANCE_INSTRUCTIONS = 0x71,
+    e_MON_RESPONSE_KEYBOARD_FEED = 0x72,
 
     e_MON_RESPONSE_PING = 0x81,
     e_MON_RESPONSE_BANKS_AVAILABLE = 0x82,
     e_MON_RESPONSE_REGISTERS_AVAILABLE = 0x83,
+
+    e_MON_RESPONSE_EXIT = 0xaa,
+    e_MON_RESPONSE_QUIT = 0xbb,
+    e_MON_RESPONSE_RESET = 0xcc,
+    e_MON_RESPONSE_AUTOSTART = 0xdd,
 };
 typedef enum t_binary_response BINARY_RESPONSE;
 
@@ -525,10 +529,9 @@ static int monitor_binary_process_condition_set(binary_command_t *command) {
         return 1;
     }
 
-    cond = lib_malloc(length + 1);
+    cond = &body[5];
 
-    memcpy(cond, &body[5], length);
-
+    /* This should be changed to memcpy if any other values are added later */
     cond[length] = '\0';
 
     cmd_length = snprintf(NULL, 0, cmd_fmt, brknum, cond);
@@ -544,7 +547,6 @@ static int monitor_binary_process_condition_set(binary_command_t *command) {
 
     monitor_binary_response(0, e_MON_CMD_CONDITION_SET, e_MON_ERR_OK, command->request_id, NULL);
 
-    lib_free(cond);
     lib_free(cmd);
 
     return 1;
@@ -601,6 +603,31 @@ static int monitor_binary_process_keyboard_feed(binary_command_t *command) {
     monitor_binary_response(0, e_MON_RESPONSE_KEYBOARD_FEED, e_MON_ERR_OK, command->request_id, NULL);
 
     return 1;
+}
+
+static int monitor_binary_process_autostart(binary_command_t *command) {
+    unsigned char *body = command->body;
+    uint8_t run = !!body[0];
+    uint16_t file_index = little_endian_to_uint16(&body[1]);
+    uint8_t filename_length = body[3];
+    unsigned char* filename = &body[4];
+
+    if(command->length < 4 + filename_length) {
+        monitor_binary_error(e_MON_ERR_CMD_INVALID_LENGTH, command->request_id);
+        return 1;
+    }
+
+    /* This should be changed later if other fields are added after it */
+    filename[filename_length] = '\0';
+
+    if(mon_autostart((char *)filename, file_index, run) < 0) {
+        monitor_binary_error(e_MON_ERR_INVALID_PARAMETER, command->request_id);
+        return 1;
+    }
+
+    monitor_binary_response(0, e_MON_RESPONSE_AUTOSTART, e_MON_ERR_OK, command->request_id, NULL);
+
+    return !exit_mon;
 }
 
 static int monitor_binary_process_registers_get(binary_command_t *command) {
@@ -974,6 +1001,8 @@ static int monitor_binary_process_command(unsigned char * pbuffer) {
         cont = monitor_binary_process_reset(command);
     } else if (command_type == e_MON_CMD_KEYBOARD_FEED) {
         cont = monitor_binary_process_keyboard_feed(command);
+    } else if (command_type == e_MON_CMD_AUTOSTART) {
+        cont = monitor_binary_process_autostart(command);
 
     } else if (command_type == e_MON_CMD_BANKS_AVAILABLE) {
         cont = monitor_binary_process_banks_available(command);
